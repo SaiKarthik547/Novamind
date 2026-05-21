@@ -1,0 +1,1203 @@
+# NovaMind — Full Implementation Plan
+## From Broken Macro Recorder → Real OS-Level Desktop Agent
+
+---
+
+## BRUTAL HONEST ASSESSMENT FIRST
+
+Your project right now is:
+- **What it claims**: Autonomous multi-agent OS-level desktop AI
+- **What it actually is**: pyautogui with hardcoded pixels + an LLM that generates step lists that never execute correctly
+
+The gap is not small fixes. To reach true OS-level execution you need to rebuild the execution layer from scratch. The architecture (Brain, EventBus, DAG, agents) is structurally fine. The problem is everything below the "dispatch action" call is broken or missing. This plan addresses that completely.
+
+---
+
+## PART 1: GAME FIX (nova_mindscape.py + main.py)
+
+### Why the game doesn't start — the exact bug
+
+`nova_mindscape.py` `run()` initialises Ursina but returns immediately.
+`main.py` starts a daemon thread calling `game.run()` then drives it via Qt timer calling `game.step()`.
+
+**The problem**: Ursina requires its OWN mainloop (`app.run()`) to process OpenGL frames, input events, and entity updates. `application.step()` is only valid INSIDE an already-running Ursina loop. Calling it from a Qt timer when `app.run()` was never called does nothing — there is no frame pipeline to step.
+
+Qt and Ursina both want to own the main thread. They cannot share it. The current code tries to hack around this and fails silently.
+
+### Fix: Run Ursina in a fully isolated process
+
+```python
+# game/nova_mindscape_launcher.py  — NEW FILE
+"""
+Runs NovaMind's Ursina game in a completely separate process.
+Communicates with the main process via a multiprocessing Queue.
+This is the only correct way to run Ursina alongside Qt.
+"""
+import multiprocessing
+import time
+import logging
+
+logger = logging.getLogger("GameLauncher")
+
+def _game_process_main(task_queue: multiprocessing.Queue, config_dict: dict):
+    """Entry point for the game subprocess."""
+    try:
+        from game.nova_mindscape import NovaMindscape, GameConfig
+        config = GameConfig(**config_dict)
+        game = NovaMindscape(config=config)
+        game._task_queue = task_queue
+        game.run_blocking()   # NEW method — calls app.run() which blocks
+    except Exception as e:
+        logger.error(f"Game process crashed: {e}")
+
+
+class GameProcessManager:
+    """Manages the Ursina game as a subprocess."""
+
+    def __init__(self, config_dict: dict):
+        self._config = config_dict
+        self._queue = multiprocessing.Queue(maxsize=50)
+        self._process = None
+
+    def start(self):
+        self._process = multiprocessing.Process(
+            target=_game_process_main,
+            args=(self._queue, self._config),
+            daemon=True,
+            name="nova-game"
+        )
+        self._process.start()
+        logger.info(f"Game process started (PID {self._process.pid})")
+
+    def update_tasks(self, tasks: list):
+        """Thread-safe — called from Brain callbacks."""
+        try:
+            # Non-blocking put — drop if queue full
+            self._queue.put_nowait({"type": "tasks", "data": tasks})
+        except Exception:
+            pass
+
+    def stop(self):
+        if self._process and self._process.is_alive():
+            self._process.terminate()
+            self._process.join(timeout=3)
+```
+
+```python
+# In nova_mindscape.py — add this method to NovaMindscape:
+
+def run_blocking(self):
+    """
+    Called only from the game subprocess.
+    Initialises Ursina and blocks until the game exits.
+    """
+    if not URSINA_OK:
+        return
+
+    self.app = Ursina(
+        title=self.config.title,
+        fullscreen=self.config.fullscreen,
+        vsync=self.config.vsync,
+    )
+    window.size = self.config.window_size
+
+    self._build_scene(self.app)
+
+    # Poll the IPC queue every frame for task updates
+    def _poll_queue():
+        if hasattr(self, '_task_queue'):
+            try:
+                while not self._task_queue.empty():
+                    msg = self._task_queue.get_nowait()
+                    if msg.get("type") == "tasks":
+                        self.update_tasks(msg["data"])
+            except Exception:
+                pass
+
+    original_update = self.app.update
+    def _combined_update():
+        _poll_queue()
+        self._game_update()  # your existing per-frame logic
+    self.app.update = _combined_update
+
+    self.app.run()   # BLOCKS — this is correct and intentional
+```
+
+```python
+# In main.py initialize() — replace the game init block:
+
+if not self.headless and not self.no_game and self.deps.get("ursina"):
+    try:
+        from game.nova_mindscape_launcher import GameProcessManager
+        self.game = GameProcessManager(config_dict={})
+        self.game.start()
+        logger.info("Game subprocess started")
+    except Exception as exc:
+        logger.warning(f"Game launch failed: {exc}")
+
+# Remove ui.start_game_loop() — not needed when game is a subprocess
+# Remove the _game_thread daemon thread — replaced by GameProcessManager
+```
+
+### Additional game fixes needed in nova_mindscape.py
+
+1. **`_setup_player()` is never shown in the file but `_build_scene()` calls it** — verify this method exists and actually creates a `FirstPersonController` or custom player entity.
+
+2. **`_game_update()` is assigned to `app.update` but the method signature must be `def _game_update(self)` with no arguments** — Ursina calls `app.update()` with no args. If it's `_game_update(self, dt)` it will crash silently.
+
+3. **`_cinematic_intro()` is called but not visible in the provided file** — verify it exists and doesn't block.
+
+4. **Mouse lock conflicts with Qt** — in subprocess mode this is fine since the game has its own window. In the broken current mode, `mouse.locked = True` steals focus from the Qt window.
+
+---
+
+## PART 2: OS-LEVEL EXECUTION LAYER (The Core Problem)
+
+This is the big one. Your current execution for any desktop task is:
+```
+LLM generates steps → Brain dispatches → ApplicationAgent calls pyautogui with hardcoded coords → wrong app, wrong location, zoom, nothing drawn
+```
+
+What it needs to be:
+```
+LLM generates steps → Brain dispatches → ExecutionEngine:
+  → Accessibility API (UIA) finds element by semantic identity
+  → Verifies it found the right element (screenshot + OCR)
+  → Acts on it with full DPI/focus/timing safety
+  → Verifies action succeeded (before/after diff)
+  → If failed → ErrorRecovery with DIFFERENT strategy, not same broken one
+```
+
+### New file: `core/os_executor.py`
+
+This replaces the broken pyautogui-only approach with a layered execution system.
+
+```python
+"""
+core/os_executor.py
+
+The real OS-level execution layer. Three execution strategies, tried in order:
+1. Windows UI Automation (UIA) — semantic element finding, most reliable
+2. Vision-guided (OCR + template match) — when UIA fails
+3. Coordinate-based (pyautogui) — last resort, with full safety guards
+
+All strategies share:
+- Active-window assertion before every action
+- DPI-aware coordinate translation
+- Modifier key release before scroll/click
+- Mouse-up in finally blocks
+- Before/after screenshot verification
+"""
+
+import ctypes
+import time
+import logging
+import pyautogui
+import pygetwindow as gw
+from typing import Optional, Tuple, Dict, Any
+from PIL import Image, ImageGrab
+
+logger = logging.getLogger("OSExecutor")
+
+# ── DPI handling ──────────────────────────────────────────────────────────────
+
+def get_dpi_scale() -> float:
+    """Get the real DPI scale factor from Windows."""
+    try:
+        # Make process DPI-aware first
+        ctypes.windll.user32.SetProcessDPIAware()
+        scale = ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0
+        return scale
+    except Exception:
+        return 1.0
+
+DPI_SCALE = get_dpi_scale()
+
+def logical_to_physical(x: int, y: int) -> Tuple[int, int]:
+    """Convert pygetwindow logical coords → pyautogui physical coords."""
+    return int(x / DPI_SCALE), int(y / DPI_SCALE)
+
+def physical_to_logical(x: int, y: int) -> Tuple[int, int]:
+    return int(x * DPI_SCALE), int(y * DPI_SCALE)
+
+# ── Focus guard ───────────────────────────────────────────────────────────────
+
+class FocusLostError(Exception):
+    pass
+
+def assert_window_focused(title_contains: str, max_wait: float = 2.0) -> bool:
+    """
+    Verify the target window has focus. Re-focus if lost. Raise if unrecoverable.
+    Call this before EVERY pyautogui action.
+    """
+    deadline = time.time() + max_wait
+    while time.time() < deadline:
+        try:
+            active = gw.getActiveWindow()
+            if active and title_contains.lower() in active.title.lower():
+                return True
+        except Exception:
+            pass
+
+        # Try to bring target window to front
+        try:
+            wins = gw.getWindowsWithTitle(title_contains)
+            if wins:
+                wins[0].activate()
+                time.sleep(0.15)
+        except Exception:
+            time.sleep(0.1)
+
+    raise FocusLostError(
+        f"Could not establish focus on window containing '{title_contains}' "
+        f"after {max_wait}s — aborting to prevent wrong-app execution"
+    )
+
+# ── Modifier key safety ───────────────────────────────────────────────────────
+
+def release_all_modifiers():
+    """Release all modifier keys. Call before scroll and before drag start."""
+    for key in ('ctrl', 'shift', 'alt', 'win'):
+        try:
+            pyautogui.keyUp(key)
+        except Exception:
+            pass
+
+# ── Canvas / region detection ─────────────────────────────────────────────────
+
+def detect_paint_canvas() -> Optional[Tuple[int, int, int, int]]:
+    """
+    Dynamically detect the MS Paint canvas bounding box.
+    Returns (left, top, right, bottom) in physical screen coordinates.
+    Strategy: screenshot the Paint window top 250px, find where the
+    white canvas region starts by scanning for a run of white pixels.
+    """
+    try:
+        wins = gw.getWindowsWithTitle("Paint")
+        if not wins:
+            return None
+        w = wins[0]
+
+        # Convert to physical coords
+        wx, wy, ww, wh = w.left, w.top, w.width, w.height
+        wx_p, wy_p = logical_to_physical(wx, wy)
+        ww_p = int(ww / DPI_SCALE)
+        wh_p = int(wh / DPI_SCALE)
+
+        # Screenshot top 260px of Paint window to find ribbon bottom
+        ribbon_img = ImageGrab.grab(bbox=(wx_p, wy_p, wx_p + ww_p, wy_p + 260))
+        ribbon_arr = list(ribbon_img.getdata())
+        width = ribbon_img.width
+
+        # Scan downward looking for a row that is >70% white pixels
+        canvas_top_local = 125  # fallback
+        for row in range(80, 260):
+            row_pixels = ribbon_arr[row * width:(row + 1) * width]
+            white_count = sum(
+                1 for r, g, b in row_pixels
+                if r > 240 and g > 240 and b > 240
+            )
+            if white_count / width > 0.70:
+                canvas_top_local = row
+                break
+
+        return (
+            wx_p + 4,
+            wy_p + canvas_top_local,
+            wx_p + ww_p - 4,
+            wy_p + wh_p - 30,
+        )
+    except Exception as e:
+        logger.warning(f"Canvas detection failed: {e}")
+        return None
+
+def point_inside_region(x: int, y: int,
+                         region: Tuple[int, int, int, int]) -> bool:
+    l, t, r, b = region
+    return l <= x <= r and t <= y <= b
+
+# ── Safe action primitives ────────────────────────────────────────────────────
+
+def safe_click(x: int, y: int, window_title: str,
+               button: str = 'left', clicks: int = 1):
+    assert_window_focused(window_title)
+    release_all_modifiers()
+    pyautogui.click(x, y, button=button, clicks=clicks, interval=0.1)
+
+def safe_drag(x1: int, y1: int, x2: int, y2: int,
+              window_title: str, duration: float = 0.4):
+    assert_window_focused(window_title)
+    release_all_modifiers()
+    try:
+        pyautogui.mouseDown(x1, y1)
+        time.sleep(0.05)
+        pyautogui.moveTo(x2, y2, duration=duration)
+    finally:
+        pyautogui.mouseUp()  # ALWAYS release even on crash/timeout
+
+def safe_scroll(x: int, y: int, clicks: int, window_title: str,
+                region: Optional[Tuple[int, int, int, int]] = None):
+    assert_window_focused(window_title)
+    release_all_modifiers()  # CRITICAL: prevents Ctrl+Scroll zoom
+    if region and not point_inside_region(x, y, region):
+        raise ValueError(f"Scroll target ({x},{y}) outside safe region {region}")
+    pyautogui.scroll(clicks, x=x, y=y)
+
+def safe_type(text: str, window_title: str, interval: float = 0.05):
+    assert_window_focused(window_title)
+    pyautogui.typewrite(text, interval=interval)
+
+def safe_hotkey(window_title: str, *keys):
+    assert_window_focused(window_title)
+    release_all_modifiers()
+    pyautogui.hotkey(*keys)
+
+# ── Screenshot verification ───────────────────────────────────────────────────
+
+def capture_region(region: Tuple[int, int, int, int]) -> Image.Image:
+    return ImageGrab.grab(bbox=region)
+
+def images_differ(img1: Image.Image, img2: Image.Image,
+                  threshold: float = 0.005) -> bool:
+    """Returns True if images differ by more than threshold fraction of pixels."""
+    try:
+        import numpy as np
+        a1 = np.array(img1.convert('RGB'))
+        a2 = np.array(img2.convert('RGB'))
+        if a1.shape != a2.shape:
+            return True
+        diff = np.abs(a1.astype(int) - a2.astype(int))
+        changed = np.sum(diff > 15)
+        total = a1.size
+        return (changed / total) > threshold
+    except ImportError:
+        # Fallback without numpy
+        return img1.tobytes() != img2.tobytes()
+
+class ActionVerifier:
+    """
+    Wraps any action with before/after screenshot comparison.
+    Raises if the action had no visible effect when one was expected.
+    """
+    def __init__(self, region: Tuple[int, int, int, int]):
+        self.region = region
+        self._before: Optional[Image.Image] = None
+
+    def __enter__(self):
+        self._before = capture_region(self.region)
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        return False  # don't suppress exceptions
+
+    def verify_changed(self, description: str = "") -> bool:
+        after = capture_region(self.region)
+        changed = images_differ(self._before, after)
+        if not changed:
+            logger.warning(f"Action had no visible effect: {description}")
+        return changed
+
+    def verify_unchanged(self, description: str = "") -> bool:
+        after = capture_region(self.region)
+        return not images_differ(self._before, after)
+```
+
+### New file: `core/uia_executor.py` — Windows UI Automation
+
+This is what makes it truly OS-level. UIA lets you find elements by their semantic meaning (button named "OK", text field in window "Paint") without any coordinates.
+
+```python
+"""
+core/uia_executor.py
+
+Windows UI Automation (UIA) wrapper.
+Finds elements by name, control type, automation ID — not by pixel position.
+This is how professional automation tools (Playwright, WinAppDriver) work internally.
+
+Requires: pip install comtypes  (pure Python, no extra install on Windows)
+"""
+
+import logging
+import time
+from typing import Optional, List
+
+logger = logging.getLogger("UIAExecutor")
+
+try:
+    import comtypes.client as cc
+    import comtypes.gen.UIAutomationClient as UIA_client
+
+    _uia = cc.CreateObject(
+        "{ff48dba4-60ef-4201-aa87-54103eef594e}",
+        interface=UIA_client.IUIAutomation,
+    )
+    UIA_OK = True
+except Exception as e:
+    UIA_OK = False
+    logger.warning(f"UIA not available: {e} — falling back to vision-guided execution")
+
+
+class UIElement:
+    """Wraps a UIA AutomationElement with convenience methods."""
+
+    def __init__(self, element):
+        self._el = element
+
+    @property
+    def name(self) -> str:
+        try:
+            return self._el.CurrentName or ""
+        except Exception:
+            return ""
+
+    @property
+    def rect(self):
+        """Returns (left, top, right, bottom) bounding rect."""
+        try:
+            r = self._el.CurrentBoundingRectangle
+            return (r.left, r.top, r.right, r.bottom)
+        except Exception:
+            return None
+
+    @property
+    def center(self):
+        r = self.rect
+        if r:
+            return ((r[0] + r[2]) // 2, (r[1] + r[3]) // 2)
+        return None
+
+    def click(self):
+        """Click via UIA invoke pattern — no coordinates needed."""
+        try:
+            pattern = self._el.GetCurrentPattern(UIA_client.UIA_InvokePatternId)
+            if pattern:
+                pattern.QueryInterface(UIA_client.IUIAutomationInvokePattern).Invoke()
+                return True
+        except Exception:
+            pass
+        # Fallback to coordinate click
+        c = self.center
+        if c:
+            import pyautogui
+            pyautogui.click(*c)
+            return True
+        return False
+
+    def set_value(self, text: str):
+        """Set text value via UIA ValuePattern."""
+        try:
+            pattern = self._el.GetCurrentPattern(UIA_client.UIA_ValuePatternId)
+            if pattern:
+                pattern.QueryInterface(
+                    UIA_client.IUIAutomationValuePattern
+                ).SetValue(text)
+                return True
+        except Exception:
+            pass
+        return False
+
+    def get_value(self) -> str:
+        try:
+            pattern = self._el.GetCurrentPattern(UIA_client.UIA_ValuePatternId)
+            if pattern:
+                return pattern.QueryInterface(
+                    UIA_client.IUIAutomationValuePattern
+                ).CurrentValue or ""
+        except Exception:
+            pass
+        return ""
+
+    def is_enabled(self) -> bool:
+        try:
+            return bool(self._el.CurrentIsEnabled)
+        except Exception:
+            return False
+
+    def children(self) -> List['UIElement']:
+        try:
+            walker = _uia.ControlViewWalker
+            children = []
+            child = walker.GetFirstChildElement(self._el)
+            while child:
+                children.append(UIElement(child))
+                child = walker.GetNextSiblingElement(child)
+            return children
+        except Exception:
+            return []
+
+
+class UIAExecutor:
+    """
+    Finds and interacts with UI elements by semantic identity.
+    No hardcoded pixel coordinates.
+    """
+
+    def find_window(self, title_contains: str,
+                    timeout: float = 5.0) -> Optional[UIElement]:
+        """Find a top-level window by title substring."""
+        if not UIA_OK:
+            return None
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            try:
+                root = _uia.GetRootElement()
+                condition = _uia.CreatePropertyCondition(
+                    UIA_client.UIA_NamePropertyId, title_contains
+                )
+                # Try exact first, then walk children for substring match
+                el = root.FindFirst(
+                    UIA_client.TreeScope_Children, condition
+                )
+                if el:
+                    return UIElement(el)
+                # Substring walk
+                all_wins = root.FindAll(
+                    UIA_client.TreeScope_Children,
+                    _uia.CreateTrueCondition()
+                )
+                for i in range(all_wins.Length):
+                    w = all_wins.GetElement(i)
+                    if title_contains.lower() in (w.CurrentName or "").lower():
+                        return UIElement(w)
+            except Exception as e:
+                logger.debug(f"find_window error: {e}")
+            time.sleep(0.2)
+        return None
+
+    def find_element(self, window: UIElement, name: str = None,
+                     control_type: int = None,
+                     automation_id: str = None) -> Optional[UIElement]:
+        """Find element within a window by any combination of properties."""
+        if not UIA_OK or not window:
+            return None
+        try:
+            conditions = []
+            if name:
+                conditions.append(
+                    _uia.CreatePropertyCondition(
+                        UIA_client.UIA_NamePropertyId, name
+                    )
+                )
+            if control_type:
+                conditions.append(
+                    _uia.CreatePropertyCondition(
+                        UIA_client.UIA_ControlTypePropertyId, control_type
+                    )
+                )
+            if automation_id:
+                conditions.append(
+                    _uia.CreatePropertyCondition(
+                        UIA_client.UIA_AutomationIdPropertyId, automation_id
+                    )
+                )
+
+            if not conditions:
+                return None
+
+            cond = conditions[0]
+            for c in conditions[1:]:
+                cond = _uia.CreateAndCondition(cond, c)
+
+            el = window._el.FindFirst(UIA_client.TreeScope_Descendants, cond)
+            return UIElement(el) if el else None
+        except Exception as e:
+            logger.debug(f"find_element error: {e}")
+            return None
+
+    def find_all_elements(self, window: UIElement,
+                          control_type: int = None) -> List[UIElement]:
+        """Find all elements of a given type within a window."""
+        if not UIA_OK or not window:
+            return []
+        try:
+            cond = (
+                _uia.CreatePropertyCondition(
+                    UIA_client.UIA_ControlTypePropertyId, control_type
+                ) if control_type else _uia.CreateTrueCondition()
+            )
+            all_els = window._el.FindAll(UIA_client.TreeScope_Descendants, cond)
+            return [UIElement(all_els.GetElement(i))
+                    for i in range(all_els.Length)]
+        except Exception:
+            return []
+
+    def get_focused_element(self) -> Optional[UIElement]:
+        try:
+            el = _uia.GetFocusedElement()
+            return UIElement(el) if el else None
+        except Exception:
+            return None
+```
+
+---
+
+## PART 3: REWRITE application_agent.py — The Right Way
+
+The entire `open_paint_and_draw()` function needs to be replaced with a proper execution pipeline that uses the above infrastructure.
+
+### New Paint execution pipeline
+
+```python
+# In agents/application_agent.py — replace open_paint_and_draw() entirely
+
+from core.os_executor import (
+    OSExecutor, assert_window_focused, detect_paint_canvas,
+    safe_drag, safe_click, safe_hotkey, release_all_modifiers,
+    ActionVerifier, FocusLostError, DPI_SCALE
+)
+from core.uia_executor import UIAExecutor
+
+class ApplicationAgent:
+
+    def __init__(self):
+        self._os = OSExecutor()
+        self._uia = UIAExecutor()
+        # Set pyautogui safety
+        pyautogui.FAILSAFE = True
+        pyautogui.PAUSE = 0.05
+
+    def execute_paint_task(self, description: str) -> Dict:
+        """
+        Full pipeline for any Paint drawing task.
+        1. Open Paint if not running
+        2. Maximise + wait for stable
+        3. Detect canvas dynamically
+        4. Generate drawing plan from LLM
+        5. Execute with verification at every step
+        6. Return result with screenshot proof
+        """
+        try:
+            # Step 1: Ensure Paint is open and focused
+            paint_win = self._ensure_paint_open()
+            if not paint_win:
+                return {"success": False, "error": "Could not open MS Paint"}
+
+            # Step 2: Detect canvas (dynamic, DPI-aware)
+            canvas = detect_paint_canvas()
+            if not canvas:
+                return {"success": False, "error": "Could not detect canvas bounds"}
+
+            cx1, cy1, cx2, cy2 = canvas
+            canvas_w = cx2 - cx1
+            canvas_h = cy2 - cy1
+
+            # Step 3: Get drawing plan from LLM
+            plan = self._generate_drawing_plan(description, canvas_w, canvas_h)
+
+            # Step 4: Execute plan with verification
+            results = []
+            for step in plan:
+                result = self._execute_drawing_step(step, canvas, "Paint")
+                results.append(result)
+                if not result.get("success"):
+                    break
+
+            # Step 5: Final verification
+            final_screenshot = pyautogui.screenshot(
+                region=(cx1, cy1, canvas_w, canvas_h)
+            )
+            screenshot_path = self._save_screenshot(final_screenshot, "paint_result")
+
+            return {
+                "success": all(r.get("success") for r in results),
+                "steps_executed": len(results),
+                "screenshot": screenshot_path,
+            }
+
+        except FocusLostError as e:
+            return {"success": False, "error": f"Focus lost: {e}"}
+        except Exception as e:
+            logger.exception(f"Paint task failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _ensure_paint_open(self):
+        """Open Paint if not running. Return when focused and maximised."""
+        import subprocess
+
+        # Check if Paint already open
+        wins = pygetwindow.getWindowsWithTitle("Paint")
+        if not wins:
+            subprocess.Popen(["mspaint"])
+            time.sleep(1.5)
+
+        # Wait for Paint window
+        for _ in range(20):
+            wins = pygetwindow.getWindowsWithTitle("Paint")
+            if wins:
+                break
+            time.sleep(0.3)
+        else:
+            return None
+
+        # Focus and maximise
+        try:
+            wins[0].activate()
+            time.sleep(0.3)
+            pyautogui.hotkey('win', 'up')
+            time.sleep(0.5)
+            assert_window_focused("Paint", max_wait=3.0)
+            return wins[0]
+        except Exception as e:
+            logger.error(f"Could not focus Paint: {e}")
+            return None
+
+    def _execute_drawing_step(self, step: Dict, canvas: Tuple,
+                               window_title: str) -> Dict:
+        """
+        Execute a single drawing step with full safety guards.
+        Each step has: type (line/rect/circle/text), coordinates, color
+        """
+        cx1, cy1, cx2, cy2 = canvas
+        step_type = step.get("type")
+
+        with ActionVerifier(region=canvas) as verifier:
+            try:
+                assert_window_focused(window_title)
+
+                if step_type == "line":
+                    # Convert normalised 0-1 coords to absolute pixels
+                    x1 = cx1 + int(step["x1"] * (cx2 - cx1))
+                    y1 = cy1 + int(step["y1"] * (cy2 - cy1))
+                    x2 = cx1 + int(step["x2"] * (cx2 - cx1))
+                    y2 = cy1 + int(step["y2"] * (cy2 - cy1))
+                    safe_drag(x1, y1, x2, y2, window_title)
+
+                elif step_type == "set_color":
+                    self._set_paint_color_uia(step.get("color", (0, 0, 0)))
+
+                # ... other step types
+
+                changed = verifier.verify_changed(f"step: {step_type}")
+                return {"success": True, "verified": changed}
+
+            except FocusLostError as e:
+                return {"success": False, "error": str(e)}
+            except Exception as e:
+                pyautogui.mouseUp()  # Safety: release mouse
+                return {"success": False, "error": str(e)}
+
+    def _set_paint_color_uia(self, rgb: Tuple[int, int, int]):
+        """
+        Set Paint color using UIA — no hardcoded pixel ratios.
+        Finds the 'Edit colors' button by automation ID, not by coordinate.
+        """
+        uia = UIAExecutor()
+        paint_win = uia.find_window("Paint", timeout=3.0)
+        if not paint_win:
+            raise Exception("Paint window not found via UIA")
+
+        # Find Edit Colors button by name (works across DPI/resolution)
+        edit_colors_btn = uia.find_element(paint_win, name="Edit colors")
+        if edit_colors_btn and edit_colors_btn.click():
+            time.sleep(0.5)
+            # Fill in RGB values in the Edit Colors dialog
+            r_field = uia.find_element(
+                uia.find_window("Edit Colors", timeout=2.0),
+                automation_id="703"  # Paint's Red field automation ID
+            )
+            if r_field:
+                r_field.set_value(str(rgb[0]))
+            # ... g and b fields
+```
+
+---
+
+## PART 4: BRAIN.PY — Fix the execution loop
+
+### Fix 1: Asyncio/Qt bridge
+
+```python
+# In core/brain.py __init__ — add this:
+import asyncio
+import threading
+
+# Spin up a dedicated asyncio loop in a daemon thread
+self._async_loop = asyncio.new_event_loop()
+self._async_thread = threading.Thread(
+    target=self._async_loop.run_forever,
+    daemon=True,
+    name="brain-async"
+)
+self._async_thread.start()
+
+# Replace asyncio.run(engine.execute_dag(...)) with:
+future = asyncio.run_coroutine_threadsafe(
+    engine.execute_dag(plan),
+    self._async_loop
+)
+result = future.result(timeout=120)
+```
+
+### Fix 2: Wire recovery plans back into dispatch
+
+```python
+# In brain.py _execute_with_recovery():
+for attempt in range(MAX_RETRIES):
+    result = self._call_agent(node)
+    if result.get("success"):
+        return result
+
+    # Build recovery context
+    context = RecoveryContext(
+        error=result.get("error", ""),
+        original_task=node.to_dict(),
+        attempt=attempt,
+    )
+    plan = await self.recovery_agent.recover(context)
+
+    if plan and plan.modified_task:
+        # CRITICAL: re-dispatch the MODIFIED task, not the original
+        modified_node = TaskNode.from_dict(plan.modified_task)
+        node = modified_node   # Next iteration uses different parameters
+        logger.info(f"Recovery plan applied: {plan.strategy}")
+    else:
+        logger.warning("Recovery returned no modified task — retry is identical")
+        break
+
+return {"success": False, "error": "All recovery attempts exhausted"}
+```
+
+### Fix 3: Mouse-up safety wrapper
+
+```python
+# In brain.py _call_agent() — wrap all agent calls:
+def _call_agent(self, node: TaskNode) -> Dict:
+    try:
+        return self.agents[node.agent].execute(node.action, node.parameters)
+    except Exception as e:
+        # Safety: if any mouse button was down, release it
+        try:
+            import pyautogui
+            pyautogui.mouseUp()
+        except Exception:
+            pass
+        return {"success": False, "error": str(e)}
+```
+
+---
+
+## PART 5: TASK PARSER — Fix _fallback_parse()
+
+```python
+# core/task_parser.py — replace _fallback_parse():
+
+_FALLBACK_ACTION_MAP = {
+    "application_agent": {
+        "action": "open_and_draw",
+        "parameters": {"description": None}  # filled from user_request
+    },
+    "file_agent": {
+        "action": "read_file",
+        "parameters": {"path": None}
+    },
+    "system_agent": {
+        "action": "run_command",
+        "parameters": {"command_line": None}
+    },
+    "browser_agent": {
+        "action": "navigate",
+        "parameters": {"url": None}
+    },
+}
+
+def _fallback_parse(self, user_request: str) -> TaskPlan:
+    """
+    When LLM parsing fails, generate a valid single-step plan.
+    The step uses an action that the target agent actually handles.
+    """
+    agent = self._classify_agent(user_request)
+    template = _FALLBACK_ACTION_MAP.get(agent, {
+        "action": "run_command",
+        "parameters": {"command_line": user_request}
+    })
+    step = {
+        "action": template["action"],
+        "parameters": {k: user_request if v is None else v
+                       for k, v in template["parameters"].items()},
+        "agent": agent,
+        "description": user_request,
+        "risk_level": 1,
+        "timeout": 60,
+    }
+    return TaskPlan(steps=[step], original_request=user_request)
+```
+
+---
+
+## PART 6: WHAT "OS-LEVEL" ACTUALLY REQUIRES
+
+To be a real OS-level agent, not a macro recorder, you need these capabilities:
+
+### 6.1 Semantic element targeting (not coordinates)
+
+You need a unified element finder that tries, in order:
+1. **UIA** (Windows UI Automation) — semantic find by role/name/ID
+2. **OCR** — find text on screen, click its bounding box
+3. **Template matching** — find a known image pattern (button icon, etc.)
+4. **Coordinate** — absolute last resort with full safety guards
+
+```python
+# core/element_finder.py
+
+class ElementFinder:
+    """
+    Find any UI element by semantic description.
+    Used by ALL agents, not just ApplicationAgent.
+    """
+
+    def find(self, description: str, window_title: str = None,
+             strategy: str = "auto") -> Optional[FoundElement]:
+        strategies = {
+            "uia":      self._find_by_uia,
+            "ocr":      self._find_by_ocr,
+            "template": self._find_by_template,
+        }
+        if strategy == "auto":
+            for name, fn in strategies.items():
+                result = fn(description, window_title)
+                if result:
+                    logger.info(f"Found '{description}' via {name}")
+                    return result
+        else:
+            return strategies.get(strategy, lambda *_: None)(
+                description, window_title
+            )
+        return None
+```
+
+### 6.2 Application-aware action sets
+
+Every app needs its own action module — not one giant ApplicationAgent.
+
+```
+agents/
+  apps/
+    paint_agent.py       # Paint-specific: draw, set color, select tool, save
+    excel_agent.py       # Excel: type in cell, formula, chart
+    chrome_agent.py      # Chrome: find tab, click element, fill form
+    notepad_agent.py     # Notepad: open, type, save
+    explorer_agent.py    # File Explorer: navigate, copy, paste, rename
+    vscode_agent.py      # VSCode: open file, find text, run command
+```
+
+Each app agent uses `ElementFinder` + `OSExecutor` with app-specific knowledge.
+
+### 6.3 Screen understanding pipeline
+
+```python
+# vision/screen_analyzer.py
+
+class ScreenAnalyzer:
+    """
+    Given a screenshot, understands what's on screen.
+    Used by brain to make decisions when UIA fails.
+    """
+
+    def analyze(self, screenshot: Image.Image) -> ScreenState:
+        return ScreenState(
+            windows=self._detect_windows(screenshot),
+            text_regions=self._ocr_full(screenshot),
+            ui_elements=self._detect_ui_elements(screenshot),
+            active_app=self._detect_active_app(screenshot),
+        )
+
+    def find_text(self, screenshot: Image.Image,
+                  target_text: str) -> Optional[Tuple[int, int]]:
+        """Find text on screen, return center coordinates."""
+        # EasyOCR or Tesseract
+        ...
+
+    def find_button(self, screenshot: Image.Image,
+                    label: str) -> Optional[Tuple[int, int]]:
+        """Find a clickable button by its label text."""
+        ...
+```
+
+### 6.4 Task planning that generates real executable steps
+
+The LLM currently generates vague steps like `{"action": "draw", "description": "draw a car"}`. It needs to generate concrete steps that the executor actually understands:
+
+```json
+{
+  "steps": [
+    {"action": "set_color", "agent": "paint_agent",
+     "parameters": {"r": 70, "g": 130, "b": 180}},
+    {"action": "select_tool", "agent": "paint_agent",
+     "parameters": {"tool": "pencil", "size": 3}},
+    {"action": "draw_line", "agent": "paint_agent",
+     "parameters": {"x1": 0.1, "y1": 0.4, "x2": 0.9, "y2": 0.4,
+                    "description": "car bottom edge"}},
+    {"action": "draw_arc", "agent": "paint_agent",
+     "parameters": {"cx": 0.25, "cy": 0.35, "rx": 0.08, "ry": 0.10,
+                    "description": "left wheel arch"}}
+  ]
+}
+```
+
+Coordinates must be **normalised (0.0-1.0)** relative to canvas, so the executor translates to absolute pixels using the dynamically-detected canvas bounds.
+
+---
+
+## PART 7: CONFIGURATION (config.py)
+
+```python
+# config.py — all hardcoded values in one place
+
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class NovaMindConfig:
+    # Timeouts (seconds)
+    AGENT_TIMEOUT:          float = 60.0
+    PAINT_OPEN_TIMEOUT:     float = 10.0
+    WINDOW_FOCUS_TIMEOUT:   float = 3.0
+    SCREEN_STABLE_TIMEOUT:  float = 3.0
+
+    # Automation
+    PYAUTOGUI_PAUSE:        float = 0.05
+    DRAG_DURATION:          float = 0.35
+    CLICK_INTERVAL:         float = 0.08
+
+    # Vision
+    PIXEL_DIFF_THRESHOLD:   float = 0.005  # fraction of pixels changed
+    CANVAS_SCAN_MAX_ROW:    int   = 260    # px from top to scan for canvas
+    CANVAS_WHITE_THRESHOLD: float = 0.70   # fraction white to call it canvas
+
+    # Recovery
+    MAX_RETRIES:            int   = 3
+    CONFIDENCE_THRESHOLD:   float = 0.70
+
+    # Memory
+    SCREENSHOT_RETENTION_HOURS: int = 24
+    EVENT_LOG_MAX_SIZE:     int   = 5000
+
+    # Game
+    GAME_PROCESS_TIMEOUT:   float = 5.0
+
+CONFIG = NovaMindConfig()
+```
+
+---
+
+## PART 8: REQUIREMENTS.TXT
+
+```
+# Core
+requests>=2.31.0
+pillow>=10.0.0
+numpy>=1.24.0
+
+# OCR
+pytesseract>=0.3.10
+easyocr>=1.7.0
+
+# Vision
+opencv-python>=4.8.0
+sentence-transformers>=2.2.0
+
+# Desktop automation
+pyautogui>=0.9.54
+pygetwindow>=0.0.9
+comtypes>=1.2.0
+
+# System
+psutil>=5.9.0
+
+# GUI
+PyQt6>=6.5.0
+
+# Browser
+playwright>=1.40.0
+selenium>=4.15.0
+
+# Game (optional)
+ursina>=5.2.0
+
+# Async
+nest-asyncio>=1.5.8
+
+# Dev / test
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+```
+
+---
+
+## PART 9: TEST STRUCTURE
+
+```
+tests/
+  unit/
+    test_task_parser.py        # fallback_parse, intent classification
+    test_security_guard.py     # blacklist bypasses, risk scoring
+    test_error_recovery.py     # plan generation, modified_task is different
+    test_llm_router.py         # provider fallback with mocked HTTP
+    test_os_executor.py        # DPI conversion, canvas detection, focus guard
+    test_element_finder.py     # all 3 strategies with mocked backends
+  integration/
+    test_brain_pipeline.py     # full pipeline with mocked agents
+    test_recovery_loop.py      # verify retry uses modified_task
+  e2e/
+    test_paint_draw.py         # requires Windows + Paint (CI: skip on Linux)
+    test_browser_navigate.py   # requires Playwright
+```
+
+---
+
+## EXECUTION ORDER FOR REPLIT
+
+### Week 1 — Stop the bleeding (make it not crash)
+1. Fix `main.py` `stop()` — `Any` not imported, `self._game_thread` never assigned
+2. Fix game launch — implement `GameProcessManager` subprocess approach
+3. Fix `config.py` — centralise all magic numbers
+4. Fix `_fallback_parse()` — valid action schemas
+5. Fix `asyncio.run()` in Qt thread — dedicated loop thread
+
+### Week 2 — Build real execution layer
+6. Write `core/os_executor.py` — focus guard, DPI, safe primitives, ActionVerifier
+7. Write `core/uia_executor.py` — semantic element finding
+8. Write `core/element_finder.py` — unified 3-strategy finder
+9. Refactor `application_agent.py` — use new infrastructure
+10. Wire VerifierAgent into Paint workflow
+
+### Week 3 — Close the agent loop
+11. Fix recovery plan re-dispatch in `brain.py`
+12. Add mouse-up finally blocks everywhere
+13. Write `agents/apps/paint_agent.py` as first real app-specific agent
+14. Fix LLM prompt to generate normalised coordinate steps
+
+### Week 4 — Stabilise and prove it works
+15. `requirements.txt` with pinned versions
+16. Write unit tests for `os_executor`, `element_finder`, `task_parser`
+17. Fix `EventBus.emit_sync()` async handler detection
+18. Add screenshot cleanup (24h retention)
+19. Add `RotatingFileHandler`
+20. End-to-end test: "draw a blue rectangle in MS Paint" must pass
+
+### Beyond Week 4 — Real OS-level breadth
+- `agents/apps/excel_agent.py` — spreadsheet automation via UIA
+- `agents/apps/chrome_agent.py` — browser automation (supplement Playwright)
+- `agents/apps/explorer_agent.py` — file system GUI automation
+- `agents/apps/vscode_agent.py` — code editor automation
+- Multi-monitor support in `vision/screen_analyzer.py`
+- Human-in-the-loop Qt dialog for escalation events
+- Session replay from EventBus log
+
+---
+
+## Summary: What "OS-level" Means in Practice
+
+| Current | Required |
+|---|---|
+| Hardcoded pixel coords | UIA semantic element finding |
+| No focus verification | Focus asserted before every action |
+| DPI scale = 1.0 always | Real DPI from Windows API |
+| Canvas = window.top + 125px | Dynamic canvas detection via pixel scanning |
+| Ctrl+Scroll causes zoom | Modifier keys released before every scroll |
+| Recovery plan discarded | Modified task re-dispatched into pipeline |
+| Verifier never called | Before/after diff on every action |
+| One giant ApplicationAgent | Per-app agents with shared execution layer |
+| asyncio.run() in Qt thread crashes | Dedicated async loop thread |
+| Game subprocess blocked/never starts | Game in separate process via multiprocessing |
+| No tests | Unit + integration + E2E coverage |
+| Magic numbers everywhere | Central config.py |

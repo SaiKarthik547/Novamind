@@ -1,0 +1,58 @@
+# NovaMind — Complete Requirements
+# Install with: pip install -r requirements.txt
+
+# ── Core HTTP / LLM ──────────────────────────────────────
+requests
+httpx
+
+# ── GUI ──────────────────────────────────────────────────
+PyQt6
+
+# ── Desktop Automation (REQUIRED for MS Paint drawing) ───
+pyautogui
+pygetwindow        # Window focus / position detection
+pyperclip          # Clipboard read/write
+comtypes           # Windows UI Automation (UIA)  [win]
+
+# ── Vision / OCR ─────────────────────────────────────────
+Pillow
+pytesseract       # Requires Tesseract installed separately
+easyocr            # Alternative OCR (no Tesseract needed)
+opencv-python      # UI element detection + template matching
+
+# ── Numeric / Data ────────────────────────────────────────
+numpy
+pandas
+
+# ── Embeddings / Semantic Search ─────────────────────────
+sentence-transformers
+
+# ── System Monitoring ────────────────────────────────────
+psutil
+
+# ── Browser Automation ───────────────────────────────────
+playwright        # After install: playwright install chromium
+selenium          # Alternative to Playwright
+
+# ── 3D Game (Nova Mindscape) ─────────────────────────────
+ursina
+
+# ── LLM Providers ────────────────────────────────────────
+groq
+together
+openai             # Used for OpenRouter + XAI + Gemini compat endpoints
+google-generativeai
+
+# ── Code Formatting ──────────────────────────────────────
+black
+autopep8
+
+# ── Utilities ────────────────────────────────────────────
+python-dotenv
+
+# ── Optional extras ──────────────────────────────────────
+# pypdf2           # PDF reading in file_agent
+# docx2txt         # Word doc reading
+# openpyxl         # Excel reading
+# markdown         # Markdown rendering in UI
+flask

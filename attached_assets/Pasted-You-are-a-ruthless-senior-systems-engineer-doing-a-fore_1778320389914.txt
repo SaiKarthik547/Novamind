@@ -1,0 +1,232 @@
+You are a ruthless senior systems engineer doing a forensic audit of this entire codebase. Your job is to produce a single file called CODEBASE_FORENSIC_AUDIT.md in the project root. This file will be read by an external AI to plan the next development sprint. It must be complete, precise, and brutally honest. Do not write what files are supposed to do. Write what they literally do when executed.
+
+═══════════════════════════════════════════════════════════════
+PART 1 — FILE INVENTORY
+═══════════════════════════════════════════════════════════════
+
+Walk every single file in the project recursively. For each .py file output:
+
+FILE: <path>
+LINES: <exact line count>
+CLASSES: <list every class name>
+FUNCTIONS: <list every function/method name with line number>
+EMPTY: <yes/no — is the file 0 bytes or contains only comments/pass>
+IMPORTS_INTERNAL: <list every "from X import Y" where X is another file in this project>
+IMPORTS_EXTERNAL: <list every external package imported>
+
+═══════════════════════════════════════════════════════════════
+PART 2 — RUNTIME WIRING AUDIT
+═══════════════════════════════════════════════════════════════
+
+For each file answer these questions with YES/NO and the exact line number:
+
+1. GAME LAUNCH: Does main.py instantiate GameProcessManager from nova_mindscape_launcher.py?
+   If NO — what does it instantiate instead and at what line?
+
+2. GAME RUN: Does main.py call game.start() on a GameProcessManager?
+   If NO — what does it call instead and at what line?
+
+3. GAME LOOP: Does main.py still call self.ui.start_game_loop()?
+   If YES — this is broken. State the line number.
+
+4. GAME THREAD: Does main.py still start a threading.Thread targeting self.game.run?
+   If YES — this is broken. State the line number.
+
+5. RUN_BLOCKING: Does nova_mindscape.py contain a method called run_blocking()?
+   If YES — does it call self.app.run() inside it?
+   If NO — the game subprocess will never render.
+
+6. QUEUE POLLING: Does nova_mindscape.py contain _poll_cmd_queue()?
+   If YES — is it called inside run_blocking() or wired to app.update?
+   If NO — the game will never receive task updates from the main process.
+
+7. STOP CLEANUP: Does main.py stop() reference self._game_thread?
+   If YES — is self._game_thread ever assigned to self (not a local variable)?
+   Does stop() import or use Any from typing?
+   If Any is used but not imported — state this as a NameError crash.
+
+8. MEMORY FILE: Open memory/memory_system.py. What is its exact line count?
+   List every class and method defined in it.
+   If it is 0 bytes or has no class definitions — state this explicitly.
+
+9. RECOVERY WIRING: In brain.py find where ErrorRecoveryAgent.recover() is called.
+   After recover() returns a RecoveryPlan — does brain.py extract plan.modified_task
+   and re-dispatch it through the agent pipeline?
+   Or does it log the plan and retry with the original unchanged task?
+   Show the exact code block (10 lines around it).
+
+10. PAINT ROUTING: In application_agent.py find the execute() method.
+    Show the complete ACTION_MAP or dispatch dict inside it.
+    Which function does the key "draw" or "open_and_draw" map to?
+    Is it execute_paint_task() (new OS-level) or open_paint_and_draw() (old broken)?
+
+11. FOCUS GUARD: Search the entire codebase for every call to pyautogui.click(),
+    pyautogui.drag(), pyautogui.mouseDown(), pyautogui.moveTo(), pyautogui.press(),
+    pyautogui.hotkey(), pyautogui.typewrite().
+    For each call — is assert_window_focused() or assert_paint_focused() called
+    within 5 lines before it?
+    List every call that has NO focus guard as: UNGUARDED: <file>:<line>
+
+12. MOUSE RELEASE: Search for every pyautogui.mouseDown() call.
+    Is there a finally: pyautogui.mouseUp() wrapping it?
+    List every mouseDown() with no finally mouseUp() as: UNSAFE_DRAG: <file>:<line>
+
+13. DPI HANDLING: Search for GetScaleFactorForDevice or SetProcessDPIAware.
+    Which files call these? At what line?
+    If neither is called anywhere — all coordinates are wrong on scaled displays.
+
+14. CANVAS DETECTION: Search for the string "125" or "canvas_top" or "_detect_paint_canvas".
+    Show every occurrence with file and line number.
+    Is the 125-pixel hardcode still present anywhere?
+
+15. ASYNCIO BRIDGE: In brain.py search for asyncio.run().
+    Is it still used to call the parallel engine from the Qt main thread?
+    Or has it been replaced with asyncio.run_coroutine_threadsafe()?
+    Show the exact code block.
+
+16. VERIFIER WIRING: Search the entire codebase for calls to verify_gui_action()
+    or verifier.verify().
+    List every caller with file and line number.
+    If zero callers exist — state: VERIFIER IS NEVER CALLED.
+
+17. STEP EXECUTOR: Does core/step_executor.py exist?
+    If yes — what is its line count and does it contain the verify-retry loop?
+    Does it get instantiated anywhere in brain.py or application_agent.py?
+
+18. LLM ROUTING: In core/llm_router.py — does the router dynamically select models
+    based on task complexity or does it use a hardcoded model string?
+    Show the model selection logic (exact code, not description).
+
+19. FALLBACK PARSE: In core/task_parser.py find _fallback_parse().
+    Show the exact step dict it generates.
+    Does it use action="execute" (broken) or a valid action from _FALLBACK_ACTION_MAP?
+
+20. EVENT BUS ASYNC: In core/event_bus.py find emit_sync().
+    Does it check if handlers are coroutines before calling them?
+    If not — async handlers will silently return unawaited coroutine objects.
+
+═══════════════════════════════════════════════════════════════
+PART 3 — DEAD CODE AND MISSING CODE
+═══════════════════════════════════════════════════════════════
+
+DEAD FUNCTIONS:
+Search the entire codebase. List every function/method that is defined but
+has zero calls to it anywhere in the project.
+Format: DEAD: <file>:<line> def <name>()
+
+MISSING FUNCTIONS:
+Search the entire codebase. List every function/method that is called
+somewhere but does not exist in any file.
+Format: MISSING: <file>:<line> calls <name>() — not defined anywhere
+
+SILENT FAILURES:
+List every try/except block where the except clause only does one of:
+- pass
+- logger.warning(...)
+- logger.debug(...)
+with no re-raise and no fallback action.
+Format: SILENT: <file>:<line> except swallows <exception type>
+
+═══════════════════════════════════════════════════════════════
+PART 4 — HARDCODED VALUES INVENTORY
+═══════════════════════════════════════════════════════════════
+
+List every hardcoded value in the codebase that should be in a config file.
+Categories to search for:
+- Pixel offsets (any integer used as a screen coordinate)
+- Timeout values (any float/int used as time.sleep() argument or timeout=)
+- Model name strings (any string containing "llama", "groq", "gpt", "claude", etc.)
+- File paths (any string starting with C:\\ or /home or ~/.novamind hardcoded inline)
+- Retry counts (any integer used as range(3) or max_retries=3 etc.)
+- Confidence thresholds (any float like 0.7, 0.9, 0.85 used as a comparison threshold)
+
+Format: HARDCODED: <file>:<line> value=<value> context=<what it controls>
+
+═══════════════════════════════════════════════════════════════
+PART 5 — COMPONENT STATUS TABLE
+═══════════════════════════════════════════════════════════════
+
+Produce this exact table filled with real answers:
+
+| Component | File Exists | Non-Empty | Instantiated | Actually Called | Verified Working |
+|---|---|---|---|---|---|
+| GameProcessManager | | | | | |
+| run_blocking() | | | | | |
+| MemorySystem | | | | | |
+| OSExecutor | | | | | |
+| UIAExecutor | | | | | |
+| ElementFinder | | | | | |
+| StepExecutor | | | | | |
+| VerifierAgent | | | | | |
+| ErrorRecoveryAgent | | | | | |
+| Recovery re-dispatch | | | | | |
+| DPI handling | | | | | |
+| Focus guard | | | | | |
+| Mouse-up finally | | | | | |
+| Dynamic model routing | | | | | |
+| Per-app agent split | | | | | |
+| Canvas detection dynamic | | | | | |
+
+Fill each cell with: YES / NO / PARTIAL / UNKNOWN
+
+═══════════════════════════════════════════════════════════════
+PART 6 — WHAT BREAKS WHEN YOU RUN python main.py RIGHT NOW
+═══════════════════════════════════════════════════════════════
+
+Trace the exact execution path of python main.py step by step.
+For each step state: WORKS / CRASHES / SILENTLY FAILS / UNKNOWN
+
+1. UTF-8 stdout wrapping
+2. Logging setup
+3. check_dependencies()
+4. load_env_keys()
+5. MemorySystem init
+6. EventBus init
+7. StateManager init
+8. CommandGuard init
+9. VisionSystem init
+10. Each agent init (list every agent)
+11. VerifierAgent init
+12. ErrorRecoveryAgent init
+13. Brain init
+14. Game init — does the game window actually appear?
+15. Scheduler init
+16. Qt UI init
+17. First task submitted — does it reach brain.process_request()?
+18. Task parsed — does task_parser produce valid steps?
+19. Step dispatched — does the right agent receive it?
+20. Step executed — does pyautogui fire into the correct window?
+21. Step verified — does verifier get called?
+22. Step failed — does recovery produce a different strategy?
+23. stop() called — does it crash on Any or _game_thread?
+
+═══════════════════════════════════════════════════════════════
+PART 7 — PRIORITY FIX LIST
+═══════════════════════════════════════════════════════════════
+
+Based on everything above, produce a prioritised fix list:
+
+CRITICAL (crashes or produces zero correct output):
+- List each item with: file, line, exact change needed, expected outcome after fix
+
+IMPORTANT (runs but produces wrong results):
+- List each item with: file, line, exact change needed, expected outcome after fix
+
+MISSING (features planned but not built):
+- List each item with: what needs to be created, which existing files it connects to
+
+Do not include anything in this list that is already working correctly.
+Do not pad this list. If only 5 things are broken, list 5 things.
+
+═══════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════
+
+Write all of the above into CODEBASE_FORENSIC_AUDIT.md.
+Use markdown headers for each part.
+Use code blocks for all code snippets.
+Use tables where specified.
+Do not truncate any section.
+Do not write "see above" or "as mentioned".
+Every section must be self-contained and complete.
+Total length of this file should be as long as it needs to be — do not cut it short.

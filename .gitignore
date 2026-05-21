@@ -1,0 +1,42 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+*.log
+
+# Virtual environments and local installs
+.env
+.venv/
+venv/
+ENV/
+env/
+.local/
+
+# Local configuration and temp files
+.novamind/
+UserskarthAppDataLocalTemppytest_novamind/
+import_check_results.json
+scan_results.txt
+
+# Editor directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Distribution/build directories
+build/
+dist/
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyd
+*.pyo
+*.pyd
