@@ -18,7 +18,7 @@ env/
 # Local configuration and temp files
 .novamind/
 UserskarthAppDataLocalTemppytest_novamind/
-import_check_results.json
+
 scan_results.txt
 
 # Editor directories
