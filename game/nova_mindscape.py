@@ -37,7 +37,13 @@ try:
     from ursina import (
         Ursina, Entity, camera, Sky, color, Vec3, Vec2,
         held_keys, Text, window, mouse, application, invoke, destroy,
+        InputField
     )
+    # Fix: Ursina 3 color.rgba doesn't normalize 0-255 values, causing everything to be >1.0
+    # and rendering as pure blown-out white/black void. Alias it to rgba32 which divides by 255.
+    if hasattr(color, 'rgba32'):
+        color.rgba = color.rgba32
+
     from ursina.prefabs.first_person_controller import FirstPersonController
     URSINA_OK = True
 except ImportError:
@@ -117,9 +123,9 @@ _INTERACT_PROMPTS: Dict[str, Callable] = {
 
 # Task status symbols for HUD feed
 _HUD_SYMS: Dict[str, str] = {
-    "running":   "▶",  "success":  "✓",  "done":      "✓",
-    "failed":    "✗",  "pending":  "…",  "retrying":  "↺",
-    "verifying": "◉",  "cancelled":"–",
+    "running":   ">",  "success":  "*",  "done":      "*",
+    "failed":    "x",  "pending":  ".",  "retrying":  "~",
+    "verifying": "O",  "cancelled":"-",
 }
 
 # Star-rating colours indexed by star count 0-5
@@ -238,9 +244,18 @@ class NovaMindscape:
 
     def update_tasks(self, tasks: List[Dict]):
         with self._lock:
-            self._tasks = [t for t in (tasks or []) if t]
+           if self._hud_mission: self._hud_mission.text = "\n".join(texts)
 
-    def update_task_display(self, tasks: List[Dict]):
+    def _on_task_submit(self):
+        text = self._task_input.text.strip()
+        q = getattr(self, "_evt_queue", None)
+        if text and q:
+            q.put({"type": "task", "text": text})
+        self._task_input.text = ""
+        self._task_input.active = False
+        self._task_input.visible = False
+
+    def update_tasks(self, tasks: List[Dict]):
         self.update_tasks(tasks)
 
     def notify_task_complete(self, task: Dict):
@@ -353,10 +368,17 @@ class NovaMindscape:
         mouse.locked  = True
         mouse.visible = False
 
-        self._build_scene(app)
+        try:
+            self._build_scene(app)
+            logger.info("Scene built successfully - entering app.run()")
+        except Exception as e:
+            logger.error(f"SCENE BUILD FAILED: {e}", exc_info=True)
+            return
 
-        app.update = self._game_update   # per-frame logic — city stays alive
-        app.input  = self._game_input    # keyboard/mouse input
+        if not hasattr(self, "_updater_entity"):
+            self._updater_entity = Entity(eternal=True)
+        self._updater_entity.update = self._game_update
+        self._updater_entity.input = self._game_input
 
         logger.info("Nova Mindscape: run_blocking() — entering Ursina main loop")
         app.run()
@@ -1264,13 +1286,14 @@ class NovaMindscape:
 
         # ── Active mission (top-left, GTA style) ─────────────────────────
         self._hud_mission = Text(
-            text="",
+            text=" ",
             position=Vec3(-0.87, 0.47),
             scale=0.85,
             color=color.rgba(255, 200, 50, 245),
             parent=ui,
         )
         self._hud_mission.wordwrap = 55
+        self._hud_mission.text = ""
 
         # ── Agent stats (bottom-left) ─────────────────────────────────────
         self._hud_xp = Text(
@@ -1299,13 +1322,33 @@ class NovaMindscape:
 
         # ── Status line (top-right) ───────────────────────────────────────
         self._hud_status = Text(
-            text="",
+            text=" ",
             position=Vec3(0.25, 0.47),
             scale=0.78,
             color=color.rgba(180, 200, 230, 220),
             parent=ui,
         )
         self._hud_status.wordwrap = 52
+        self._hud_status.text = ""
+
+        #  In-game Task Input Field (hidden by default, toggle with Tab) 
+        self._task_input = InputField(
+            y=-0.45,
+            scale=(0.8, 0.05),
+            active=False,
+            visible=False,
+            parent=ui,
+        )
+        self._task_input.on_submit = self._on_task_submit
+
+        self._hud_task_hint = Text(
+            text="[TAB] ENTER TASK",
+            position=Vec3(0, -0.48),
+            scale=0.8,
+            color=color.rgba(200, 200, 200, 180),
+            origin=(0, 0),
+            parent=ui,
+        )
 
         # ── Interaction prompt (bottom-centre) ────────────────────────────
         self._hud_interact = Text(
@@ -1473,33 +1516,34 @@ class NovaMindscape:
 
     def _cinematic_intro(self):
         """Brief top-down sweep into the city, then hands control to player."""
-        # Store original camera state; temporarily un-parent camera
-        intro_height = 80
-        camera.parent = None
-        camera.position = Vec3(0, intro_height, -30)
-        camera.rotation = Vec3(60, 0, 0)
-        camera.fov = 70
-
-        def _step2():
-            camera.position = Vec3(0, 40, -10)
-            camera.rotation = Vec3(40, 0, 0)
-
-        def _finish():
-            camera.parent   = self._cam_pivot
-            camera.position = Vec3(0, 1.0, -8.0) if self._third_person else Vec3(0, 0, 0.1)
-            camera.rotation = Vec3(8 if self._third_person else 0, 0, 0)
-            camera.fov      = self.config.fov
-            if self._hud_notify:
-                self._hud_notify.text    = "  WELCOME TO NOVA CITY  ·  AGENT NOVA ONLINE  "
-                self._hud_notify.visible = True
-                self._notify_timer = 5.0
-
-        invoke(_step2,  delay=1.2)
-        invoke(_finish, delay=2.8)
+        # Skipping invoke() animation because it crashes before app.run() starts
+        camera.parent   = self._cam_pivot
+        camera.position = Vec3(0, 1.0, -8.0) if self._third_person else Vec3(0, 0, 0.1)
+        camera.rotation = Vec3(8 if self._third_person else 0, 0, 0)
+        camera.fov      = self.config.fov
+        if self._hud_notify:
+            self._hud_notify.text    = "  WELCOME TO NOVA CITY  ·  AGENT NOVA ONLINE  "
+            self._hud_notify.visible = True
+            self._notify_timer = 5.0
 
     # ── Key input  (match/case — zero elif dispatch) ──────────────────────────
 
-    def _game_input(self, key: str):
+    def _game_input(self, key):
+        """Called automatically by Ursina when any key is pressed."""
+
+        if key == 'tab':
+            if hasattr(self, '_task_input'):
+                self._task_input.visible = not self._task_input.visible
+                if self._task_input.visible:
+                    self._task_input.active = True
+                    self._task_input.text = ""
+                else:
+                    self._task_input.active = False
+            return
+            
+        if hasattr(self, '_task_input') and self._task_input.active:
+            return
+
         try:
             match key:
                 case "v":
@@ -1558,7 +1602,7 @@ class NovaMindscape:
             from ursina import time as u_time
 
             dt = min(u_time.dt, 0.05)   # clamp to avoid spiral-of-death
-            t  = u_time.time
+            t  = u_time.time() if callable(u_time.time) else u_time.time
             self._frame_t = t
 
             with self._lock:
@@ -1930,7 +1974,7 @@ class NovaMindscape:
         )
         req_txt = (task.get("summary") or task.get("request") or "TASK")[:28]
         label = Text(
-            text=f"◉ {req_txt}\n[{status.upper()}]",
+            text=f"[O] {req_txt}\n[{status.upper()}]",
             position=Vec3(mx, 22, mz),
             scale=5.5,
             color=color.rgba(cr, cg, cb, 240),
@@ -1938,8 +1982,8 @@ class NovaMindscape:
         )
         # Status icon — dict dispatch selects symbol
         _ICONS: Dict[str, str] = {
-            "success": "★", "done": "★", "failed": "✗",
-            "running": "▶", "retrying": "↺",
+            "success": "*", "done": "*", "failed": "x",
+            "running": ">", "retrying": "~",
         }
         icon_text = Text(
             text=_ICONS.get(status, "!"),
@@ -2009,6 +2053,9 @@ class NovaMindscape:
                         f"Status: {st}\n"
                         f"Progress: {steps_done}/{steps_tot} steps"
                     )
+            else:
+                if self._hud_mission:
+                    self._hud_mission.text = f"TERMINAL {idx + 1}\n\nNO ACTIVE TASKS\nPress [TAB] to assign a new task."
 
         def _interact_beacon():
             task = self._interact_target["data"].get("task", {})
@@ -2019,7 +2066,7 @@ class NovaMindscape:
             errs = " | ".join(str(e) for e in (task.get("error_log") or [])[:2])
             if self._hud_mission:
                 self._hud_mission.text = (
-                    f"★ MISSION OBJECTIVE ★\n"
+                    f"* MISSION OBJECTIVE *\n"
                     f"{req}\n"
                     f"Status: {st}\n"
                     f"Steps: {steps_done}/{steps_tot}\n"
@@ -2053,8 +2100,8 @@ class NovaMindscape:
         success_r = (done / max(len(tasks), 1)) if tasks else 1.0
         stars = max(1, round(success_r * 5))
         if self._hud_stars:
-            filled   = "★" * stars
-            empty    = "☆" * (5 - stars)
+            filled   = "*" * stars
+            empty    = "-" * (5 - stars)
             star_col = _STAR_COLS[min(stars, 5)]
             self._hud_stars.color = color.rgba(*star_col, 235)
             self._hud_stars.text  = f"{filled}{empty}"
@@ -2062,8 +2109,8 @@ class NovaMindscape:
         # Task feed — list * bool trick replaces if/elif dispatch
         # list * True(1) = full list;  list * False(0) = [] → joins to ""
         feed_lines = (
-            [f"◈ NOVA CITY — {len(tasks)} missions"] +
-            [f"{_HUD_SYMS.get(tk.get('status','?'), '·')} "
+            [f"> NOVA CITY — {len(tasks)} missions"] +
+            [f"{_HUD_SYMS.get(tk.get('status','?'), '-')} "
              f"{(tk.get('request') or tk.get('label') or '')[:30]}"
              for tk in tasks[-7:]]
         ) * self._show_tasks

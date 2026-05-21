@@ -16,7 +16,9 @@ Zero if-elif routing — dispatch via O(1) dict lookup throughout.
 
 import logging
 import multiprocessing
+import queue
 import time
+import threading
 from typing import Callable, Dict, List, Optional
 
 logger = logging.getLogger("GameProcessManager")
@@ -38,6 +40,7 @@ def _game_worker(cmd_q: multiprocessing.Queue,
         }) if hasattr(GameConfig, '__dataclass_fields__') else GameConfig()
         game = NovaMindscape(config=cfg)
         game._cmd_queue = cmd_q          # inject IPC queue — enables _poll_cmd_queue()
+        game._evt_queue = evt_q          # inject outbound queue
         evt_q.put({"type": "ready"})
 
         import threading
@@ -60,7 +63,12 @@ def _game_worker(cmd_q: multiprocessing.Queue,
                     pass
 
         threading.Thread(target=_cmd_loop, daemon=True).start()
-        game.run_blocking()
+        try:
+            game.run_blocking()
+        except Exception as exc:
+            import logging
+            logging.error(f"Game run_blocking crashed: {exc}", exc_info=True)
+            evt_q.put({"type": "error", "error": str(exc)})
 
     except Exception as exc:
         evt_q.put({"type": "error", "error": str(exc)})
@@ -118,12 +126,27 @@ class GameProcessManager:
                 _should_return = {True: lambda: True}
                 ret = _should_return.get(msg.get("type") == "ready")
                 if ret:
+                    threading.Thread(target=self._event_loop, daemon=True, name="GameEventLoop").start()
                     return ret()
             except Exception:
                 pass
 
         logger.warning(f"GameProcessManager.start: no ready signal after {timeout}s")
         return False
+
+    def _event_loop(self) -> None:
+        while self.is_alive:
+            try:
+                msg = self._evt_q.get(timeout=0.5)
+                if msg.get("type") == "task":
+                    if self._task_callback:
+                        self._task_callback(msg.get("text", ""))
+                elif msg.get("type") == "error":
+                    logger.error(f"Game process error: {msg.get('error')}")
+                elif msg.get("type") == "stopped":
+                    logger.info("Game process stopped early")
+            except Exception:
+                pass
 
     def _on_ready(self) -> None:
         self._ready = True

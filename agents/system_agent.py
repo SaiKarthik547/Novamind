@@ -1987,6 +1987,20 @@ class SystemAgent(BaseAgent):
         if not handler: return {"success": False, "error": "Not implemented"}
         return handler()
 
+    def disable_startup_item(self, name: str) -> Dict:
+        """Disable a startup item by removing it from the registry Run key."""
+        if not IS_WINDOWS:
+            return {"success": False, "error": "disable_startup_item only supported on Windows"}
+        paths = [
+            "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+            "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",
+        ]
+        for path in paths:
+            result = self.registry_delete(path, name)
+            if result.get("success"):
+                return {"success": True, "name": name, "removed_from": path}
+        return {"success": False, "error": f"Startup item '{name}' not found in registry Run keys"}
+
     def lock_screen(self) -> Dict:
         """Lock the workstation screen."""
         def _lock_win():

@@ -901,7 +901,7 @@ class Brain:
                     "agent":       r.agent,
                     "action":      r.action,
                     "output":      r.output[:300],
-                    "error":       r.error[:200],
+                    "error":       (r.error or "")[:200],
                     "duration":    round(r.duration, 2),
                 }
                 for r in exec_.results

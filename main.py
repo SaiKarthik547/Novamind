@@ -309,7 +309,7 @@ class NovaMindApp:
                 _cfg = GameConfig()
                 self.game = GameProcessManager(
                     config_dict=_cfg.__dict__ if hasattr(_cfg, "__dict__") else {},
-                    task_callback=self._on_game_task_update,
+                    task_callback=self._on_task_submitted,
                 )
                 logger.info("  Game ready (process manager)")
             except Exception as exc:
@@ -337,12 +337,10 @@ class NovaMindApp:
         def _init_ui():
             logger.info("-> Task UI")
             try:
-                from ui.task_window import TaskWindow
-                from PyQt6.QtWidgets import QApplication
-                self._qt_app = QApplication.instance() or QApplication(sys.argv)
-                self.ui = TaskWindow(brain=self.brain, game=self.game)
-                self.ui.task_submitted.connect(self._on_task_submitted)
-                logger.info("  UI ready")
+                # Disabled PyQt6 TaskWindow as per user request to have single Game window
+                self.ui = None
+                self._qt_app = None
+                logger.info("  UI disabled (using Game UI only)")
             except Exception as exc:
                 logger.warning(f"  UI init failed: {exc}")
 
@@ -353,7 +351,8 @@ class NovaMindApp:
             (True, True):  _init_ui,
             (True, False): _ui_disabled_msg,
         }
-        _ui_logic.get((not self.headless, bool(self.deps.get("pyqt6"))), lambda: None)()
+        # Only initialize UI if game is not active or we explicitly passed --no-game
+        _ui_logic.get((not self.headless and not getattr(self, "game", None), bool(self.deps.get("pyqt6"))), lambda: None)()
 
         # Validate Agent Registry (O(1) contract check)
         logger.info("-> Validating Agent Registry")
@@ -527,7 +526,17 @@ class NovaMindApp:
             from PyQt6.QtWidgets import QApplication
             qt = QApplication.instance()
             if qt:
+                # Need to run event loop but we don't want to block the rest of the application
+                # Wait, if we use sys.exit(qt.exec()), the main thread blocks here forever!
+                # It's fine if game is not active, but if we change this, we just need to ensure it runs
                 sys.exit(qt.exec())
+        elif self.game and not self.headless:
+            logger.info("Game mode active. Press Ctrl+C in console to stop.")
+            try:
+                while self.running:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                self.stop()
 
         else:
             logger.info("Headless mode active. Press Ctrl+C to stop.")
