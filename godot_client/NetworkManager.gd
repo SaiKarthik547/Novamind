@@ -2,6 +2,7 @@ extends Node
 
 var socket = WebSocketPeer.new()
 var url = "ws://127.0.0.1:8765"
+var crypto = Crypto.new()
 
 signal event_received(event_data)
 signal state_updated(state_data)
@@ -72,7 +73,9 @@ func send_message(msg_type: String, action: String, payload: Dictionary = {}):
 	var message = {
 		"type": msg_type,
 		"action": action,
-		"payload": payload
+		"payload": payload,
+		"timestamp": Time.get_unix_time_from_system(),
+		"msg_id": crypto.generate_random_bytes(16).hex_encode()
 	}
 	var json_str = JSON.stringify(message)
 	if socket.get_ready_state() == WebSocketPeer.STATE_OPEN:

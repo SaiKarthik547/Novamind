@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NovaMind Bridge Protocol",
+  "description": "Standardized schema for all WebSocket IPC between Python Ecosystem and Godot Client",
+  "type": "object",
+  "properties": {
+    "protocol_version": {
+      "type": "string",
+      "enum": ["1.0.0"],
+      "description": "The protocol version to ensure compatibility."
+    },
+    "message_type": {
+      "type": "string",
+      "enum": ["COMMAND", "EVENT", "STATE_UPDATE", "ERROR", "HEARTBEAT", "SYSTEM"],
+      "description": "The transport layer category of the message."
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "USER_COMMAND_ISSUED", "AGENT_TOOL_CALL", "AGENT_TASK_STARTED",
+        "AGENT_TASK_COMPLETED", "AGENT_TASK_FAILED", "AGENT_LIFECYCLE_CREATED",
+        "AGENT_LIFECYCLE_DESTROYED", "SYSTEM_HEARTBEAT", "SCENE_LOAD"
+      ],
+      "description": "The specific semantic event type."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Arbitrary data associated with the action.",
+      "additionalProperties": true
+    },
+    "timestamp": {
+      "type": "number",
+      "description": "Float timestamp of when the message was dispatched."
+    },
+    "msg_id": {
+      "type": "string",
+      "description": "UUID string for message tracing and idempotency."
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "UUID string tying a sequence of distributed events together."
+    }
+  },
+  "required": ["protocol_version", "message_type", "event_type", "payload", "timestamp", "msg_id", "correlation_id"]
+}

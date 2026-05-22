@@ -67,7 +67,6 @@ def check_dependencies() -> Dict[str, bool]:
         "pygetwindow":           lambda: __import__("pygetwindow"),
         "playwright":            lambda: __import__("playwright"),
         "selenium":              lambda: __import__("selenium"),
-        "ursina":                lambda: __import__("ursina"),
     }
     deps: Dict[str, bool] = {}
     for name, fn in CHECKS.items():
@@ -167,6 +166,10 @@ class NovaMindApp:
             logger.error("requests is required: pip install requests")
             return False
 
+        # Initialize Core Infrastructure
+        from core.event_recorder import EventRecorder
+        self.event_recorder = EventRecorder()
+
         # LLM Router
         logger.info("-> LLM Router")
         from core.llm_router import get_router
@@ -190,7 +193,20 @@ class NovaMindApp:
         try:
             from core.event_bus import get_event_bus
             self.event_bus = get_event_bus(memory_system=self.memory)
-            logger.info("  EventBus ready")
+            
+            # Wire Event Recorder to EventBus (Full System Logging)
+            def _log_event_bus(event: dict):
+                # Only log standard events, ignoring high-freq updates unless necessary
+                evt_type = event.get("type", "UNKNOWN")
+                self.event_recorder.log_event(
+                    event_type=evt_type,
+                    source_runtime="Python",
+                    severity="INFO",
+                    payload=event
+                )
+            
+            self.event_bus.subscribe("*", _log_event_bus)
+            logger.info("  EventBus ready and wired to EventRecorder")
         except Exception as exc:
             logger.warning(f"  EventBus init failed: {exc}")
 
@@ -296,11 +312,11 @@ class NovaMindApp:
             
             # Register mock bridge handler for testing Vertical Slice
             async def on_godot_command(data):
-                action = data.get("action")
+                event_type = data.get("event_type")
                 payload = data.get("payload", {})
-                logger.info(f"Godot Bridge Event Received: {action} - {payload}")
+                logger.info(f"Godot Bridge Event Received: {event_type} - {payload}")
                 
-                if action == "user_command":
+                if event_type == "USER_COMMAND_ISSUED":
                     text = payload.get("text", "").lower()
                     if "workspace" in text or "vscode" in text:
                         # 1. Queue Task
@@ -320,6 +336,38 @@ class NovaMindApp:
                         self.task_manager.submit("Open Workspace", open_workspace)
                         
             self.bridge_server.register_handler("EVENT", on_godot_command)
+            
+            # 3. Wire EventBus to Godot using Threadsafe Dispatcher
+            if self.event_bus:
+                def _forward_to_godot(event: dict):
+                    # Uses the thread-safe dispatcher so any thread can emit events safely
+                    # Map generic event to strict EVENT_TYPE Enum if possible
+                    # We will use AGENT_TOOL_CALL, etc.
+                    event_type_str = event.get("type", "AGENT_TOOL_CALL").upper()
+                    # Prepend AGENT_ if it's a task event to match Enum
+                    if event_type_str in ["TASK_STARTED", "TASK_COMPLETED", "TASK_FAILED"]:
+                        event_type_str = "AGENT_" + event_type_str
+                    self.bridge_server.send_message_threadsafe("STATE_UPDATE", event_type_str, event)
+                
+                # Forward critical agent events to visualize in the spatial world
+                events_to_forward = [
+                    "task_started", "task_completed", "task_failed",
+                    "tool_call_start", "tool_call_end", "tool_call_error"
+                ]
+                self.event_bus.subscribe_many(events_to_forward, _forward_to_godot)
+                logger.info("  EventBus wired to BridgeServer (Threadsafe IPC)")
+                
+            # 4. Wire Authoritative Heartbeat Reconciliation
+            if self.task_manager and self.bridge_server:
+                def _get_authoritative_state():
+                    # Return list of active task/agent IDs so Godot can cull orphaned holograms
+                    active_tasks = []
+                    for t_id, task in self.task_manager.tasks.items():
+                        if task.status in ["running", "pending"]:
+                            active_tasks.append(t_id)
+                    return {"active_tasks": active_tasks}
+                self.bridge_server.heartbeat_callback = _get_authoritative_state
+            
             logger.info("  Task Manager and Bridge Server ready")
         except Exception as exc:
             logger.warning(f"  Bridge init failed: {exc}")
@@ -527,6 +575,8 @@ class NovaMindApp:
                 async def _start_all():
                     if self.task_manager:
                         self.task_manager.start()
+                    if self.event_recorder:
+                        await self.event_recorder.start()
                     await self.bridge_server.start()
                 
                 try:

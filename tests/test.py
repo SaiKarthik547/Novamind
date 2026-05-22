@@ -8,7 +8,6 @@ files = [
     "agents/application_agent.py",
     "core/uia_executor.py",
     "core/task_parser.py",
-    "game/nova_mindscape.py",
     "main.py",
 ]
 
