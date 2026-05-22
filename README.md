@@ -1,311 +1,240 @@
-# NovaMind — Autonomous Desktop AI Agent
+# NovaMind — Recoverable Distributed Runtime Kernel
 
-> **"Eyes → Brain → Hands"** — NovaMind sees your screen, understands natural language requests, plans complex multi-step workflows, and executes them autonomously using real mouse/keyboard control, file operations, web browsing, code execution, data manipulation, email management, network operations, and Windows system control.
+> A deterministic, event-driven runtime kernel that orchestrates AI agents as first-class workloads. Built for temporal correctness, causal scheduling, and authoritative state recovery after disruption.
 
-**Version:** 3.0.0  
-**Platform:** Windows 10/11 (Python 3.8+)  
+**Version:** 4.0.0 (Phase 7 — Concurrency Determinism & Causal Scheduling)
+**Platform:** Windows 10/11 (Python 3.12+)
 **License:** Apache 2.0
+
+---
+
+## What NovaMind Actually Is
+
+NovaMind is **not** primarily an AI desktop assistant. That was an early framing that has been superseded by the actual engineering.
+
+NovaMind is a **Recoverable Distributed Runtime Kernel** — a system capable of:
+
+- **Deterministic execution**: events are ordered by causal dependencies and Lamport logical clocks, not wall-clock arrival time
+- **Epoch-sealed snapshots**: state is captured in discrete temporal windows, eliminating mid-transition ambiguity
+- **Authoritative recovery**: the runtime can reconstruct its exact pre-disruption state from a snapshot + delta replay
+- **Split-brain detection**: Python runtime and Godot visualization client are continuously reconciled using divergence scoring
+- **Tiered concurrency barriers**: mutation isolation during snapshots without global stop-the-world freezes
+
+AI agents are **workloads** executed by the kernel — not the kernel's identity.
+
+```
+NovaMind Runtime Kernel
+└── AI Agent Orchestration Runtime
+    └── Specialized workload agents (file, browser, system, data, email, ...)
+```
 
 ---
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Complete Agent System](#complete-agent-system)
-3. [Core Architecture](#core-architecture)
-4. [Quick Start](#quick-start)
-5. [Detailed Capabilities](#detailed-capabilities)
-6. [System Components](#system-components)
-7. [Project Structure](#project-structure)
+1. [Runtime Architecture](#runtime-architecture)
+2. [Phase 7: Concurrency Determinism](#phase-7-concurrency-determinism)
+3. [Recovery Semantics](#recovery-semantics)
+4. [Agent Workloads](#agent-workloads)
+5. [Quick Start](#quick-start)
+6. [Project Structure](#project-structure)
+7. [CI / Certification](#ci--certification)
 8. [Development](#development)
 
 ---
 
-## Overview
+## Runtime Architecture
 
-NovaMind is a fully autonomous Windows desktop AI agent written in Python. It operates on three integrated layers:
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                   NovaMind Runtime Kernel v4.0                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌───────────────────────────────────────────────────────────────┐  │
+│  │              SYNCHRONIZATION LAYER (Phase 7)                  │  │
+│  │                                                               │  │
+│  │  LogicalClock (Lamport)   EpochManager   SnapshotBarrier      │  │
+│  │  • monotonic tick         • epoch seal   • mutation_gate      │  │
+│  │  • Lamport merge rule     • advance()    • read-only bypass   │  │
+│  └───────────────────┬───────────────────────────────────────────┘  │
+│                      │                                              │
+│  ┌───────────────────▼───────────────────────────────────────────┐  │
+│  │              CAUSAL SCHEDULER (Phase 7)                       │  │
+│  │                                                               │  │
+│  │  • DAG dependency resolution (many-to-many causal_parents)   │  │
+│  │  • Logical clock arbitration for concurrent events           │  │
+│  │  • SchedulerTraceLog: why/when/how each event dispatched     │  │
+│  │  • Deadlock detection + resolution without hanging           │  │
+│  └───────────────────┬───────────────────────────────────────────┘  │
+│                      │                                              │
+│  ┌───────────────────▼───────────────────────────────────────────┐  │
+│  │              RUNTIME SUPERVISOR (Phase 6)                     │  │
+│  │                                                               │  │
+│  │  FSM: NORMAL → DEGRADED → RECOVERY → CRITICAL_HALT           │  │
+│  │  EscalationHandler  HealthEvaluator  DivergenceAnalyzer       │  │
+│  └───────────────────┬───────────────────────────────────────────┘  │
+│                      │                                              │
+│  ┌───────────────────▼───────────────────────────────────────────┐  │
+│  │              EVENT SYSTEM                                     │  │
+│  │                                                               │  │
+│  │  EventBus (pub/sub)    EventRecorder (JSONL journal)          │  │
+│  │  RuntimeAuditor        ReplayEngine (DAG-based)               │  │
+│  └───────────────────┬───────────────────────────────────────────┘  │
+│                      │                                              │
+│  ┌───────────────────▼───────────────────────────────────────────┐  │
+│  │              SNAPSHOT & RECOVERY (Phase 6)                    │  │
+│  │                                                               │  │
+│  │  StateSnapshotManager  SnapshotStore  EffectJournal           │  │
+│  │  • Epoch-sealed capture               • epoch_id + clock tag  │  │
+│  │  • Barrier-protected atomic commits   • irreversible effects  │  │
+│  └───────────────────┬───────────────────────────────────────────┘  │
+│                      │                                              │
+│  ┌───────────────────▼───────────────────────────────────────────┐  │
+│  │              AGENT WORKLOADS                                  │  │
+│  │                                                               │  │
+│  │  Brain  →  TaskParser  →  Agent Dispatch (O(1) dict)          │  │
+│  │  ApplicationAgent  SystemAgent  FileAgent  CodeAgent          │  │
+│  │  DataAgent  NetworkAgent  EmailAgent  BrowserAgent            │  │
+│  │  VerifierAgent  ErrorRecoveryAgent  MemoryAgent               │  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                     │
+│  ┌──────────────────────────┐   ┌─────────────────────────────┐    │
+│  │ WebSocket Bridge Server  │   │ Godot Client (visualization) │    │
+│  │ PRODUCTION / CHAOS mode  │   │ read-only spatial observer   │    │
+│  └──────────────────────────┘   └─────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
-- **Eyes** — Vision System that captures screen content, performs dual-engine OCR (Tesseract + EasyOCR), detects UI elements via Windows UI Automation (UIA), and describes visual context for LLM reasoning.
-
-- **Brain** — Multi-agent orchestration engine that receives natural language requests, parses them into structured task plans, dispatches subtasks to 12 specialized agents, verifies outputs independently, and handles failure recovery automatically.
-
-- **Hands** — 12 specialized agents that physically operate the computer: mouse/keyboard control, application launching, data manipulation, email management, network operations, code execution, file management, and Windows system control.
-
-### Design Philosophy
-
-- **Zero conditional routing** — All agent dispatch and classification uses O(1) dict lookups or frozenset membership, no if/elif chains
-- **Verified execution** — Every task step independently verified by VerifierAgent before acceptance (prevents hallucination)
-- **Crash recovery** — All state transitions persisted to SQLite immediately (survives power loss, process crashes)
-- **Event-driven observability** — Central EventBus emits every significant action for debugging, auditing, session replay
-- **Modular agents** — Each of 12 agents is self-contained, independently testable, and can be extended
-- **Persistent memory** — 14-table SQLite system with semantic search, experience consolidation, and skill library
+**Invariant:** Godot is a visualization client only. It never caches authoritative logic. Every reconciliation event is logged. No silent healing.
 
 ---
 
-## Complete Agent System
+## Phase 7: Concurrency Determinism
 
-NovaMind includes **12 fully functional agents** that handle different domains:
+Phase 7 addresses the hardest correctness problem in distributed execution: **temporal ordering under concurrency**.
 
-### 1. **ApplicationAgent** (Desktop App Control)
-- Launch any Windows application via Windows Search, Run dialog, or subprocess
-- Send keyboard input, mouse clicks, and clipboard operations
-- Control MS Paint: draw shapes, fill colors, set pen properties, save files
-- Window focus/minimize/maximize management
-- Application-specific task automation
+### Problem
 
-**Example:** `"Draw a red sports car in MS Paint"` → Agent launches Paint, generates drawing plan, executes via real mouse movements, saves result
+Under async concurrency, events arrive in non-deterministic wall-clock order. Two events that are causally ordered (B must follow A) may land in the journal as B, A due to scheduler timing. Linear replay of such a log produces wrong state.
 
-### 2. **SystemAgent** (Windows System Control)
-- **Process Management:** List, kill, query by PID/name, set priority levels
-- **Registry Operations:** Read, write, delete keys and values
-- **Windows Services:** Start, stop, pause, query status, enable/disable
-- **Scheduled Tasks:** Create, delete, list, trigger execution
-- **Firewall Management:** Add/remove/list rules, query status
-- **Performance Monitoring:** Real-time CPU, RAM, disk, GPU, network metrics
-- **Event Logs:** Query application/system/security event logs
-- **Audio Control:** Get/set volume, mute/unmute, list devices, switch output
-- **Display Management:** Get/set resolution, refresh rate, brightness
-- **Printer Management:** List printers, set default, print files
-- **Network Configuration:** List adapters, query/set IP, DNS configuration
-- **Power Control:** Sleep, hibernate, restart, shutdown with delay
-- **System Notifications:** Display Windows toast alerts
-- **Startup Items:** Add/remove programs from autostart
+### Solution: Logical Clocks + Causal DAG
 
-**Example:** `"Show me CPU and RAM usage"` → Returns real-time performance metrics
+Every event and side-effect is tagged with:
 
-### 3. **FileAgent** (Complete File System Management)
-- **Read/Write/Copy/Move/Delete/Rename** with auto-backup to trash
-- **Archive Operations:** Create/extract ZIP, TAR, GZ, BZ2, LZMA
-- **File Type Detection:** Magic-byte file identification (not extension-based)
-- **Encoding Detection:** Automatic UTF-8/ASCII/Latin-1/UTF-16 handling
-- **Binary File Analysis:** Hexdump generation, binary structure inspection
-- **Directory Operations:** Tree traversal, recursive listing, watching
-- **File Comparison:** Line-by-line diff generation between files
-- **Metadata Management:** Query/edit timestamps, permissions, attributes
-- **Search Operations:** Regex/glob-based file search
-- **Duplicate Finding:** MD5-based duplicate detection
-- **Safe Deletion:** All destructive ops backed up to `~/.novamind/trash/` first
+```python
+{
+  "msg_id":        "...",
+  "logical_clock": 1042,       # Lamport clock value at submission
+  "epoch_id":      7,          # Which snapshot epoch this belongs to
+  "causal_parents": ["..."]    # IDs of events that must complete first
+}
+```
 
-**Protected paths:** Never modifies `C:\Windows`, `C:\Program Files`, `/usr/bin`, `/etc`, `/sys`
+The `CausalScheduler` builds a dependency DAG from these fields. Events are dispatched only when all their parents have completed, in ascending `logical_clock` order for concurrent events.
 
-**Example:** `"Find all Python files in Desktop"` → Returns matching files with sizes and metadata
+### Tiered Snapshot Barriers (not stop-the-world)
 
-### 4. **DataAgent** (Multi-Format Data Manipulation)
-- **Formats:** CSV, Excel (XLSX/XLS), JSON, SQL (SQLite + any SQLAlchemy DSN), Parquet
-- **Safe Formula Evaluation:** Row-level formulas with AST whitelist (no code injection)
-- **Data Transformation:** Filtering, sorting, grouping, pivoting, aggregation
-- **Schema Inference:** Automatic type detection (int/float/string/datetime)
-- **Statistical Analysis:** Mean, median, std dev, min, max, quartiles
-- **Data Cleaning:** Null/duplicate removal, whitespace trimming, type coercion
-- **Chart Generation:** CSV → matplotlib charts (line, bar, scatter, histograms)
-- **ETL Pipelines:** Sequential transformation steps with error handling
-- **SQL Execution:** Direct SQL queries with result set handling
-- **Data Profiling:** Row/column/type/null count summaries
+| Layer | Blocked during snapshot? |
+|---|---|
+| Mutation commits (agent writes) | **YES** — drained before seal |
+| FSM state transitions | **YES** — deferred |
+| Read-only observers (metrics) | NO |
+| Heartbeat publication | NO |
+| Logging and audit trails | NO |
+| External IO (already in-flight) | Journaled by EffectJournal |
 
-**Example:** `"Read sales.csv and show revenue by region"` → Parses CSV, groups by region, returns summary
+### Epoch Model
 
-### 5. **NetworkAgent** (Network & Security Scanning)
-- **Port Scanning:** Fast multi-threaded scanning of common and custom ports
-- **Service Identification:** Banner grabbing and service mapping
-- **HTTP Client:** Request with automatic SSL verification, redirect following
-- **DNS Operations:** DNS lookups, reverse lookups, MX record queries
-- **SSL Certificate Inspection:** Certificate validation, expiry checking
-- **WiFi Management:** Windows WiFi enumeration, profile listing (Windows-specific)
-- **IP Geolocation:** IP address information lookup
-- **Bandwidth Monitoring:** Network adapter statistics, bytes sent/received
-- **Traceroute:** Path tracing to remote hosts
-- **WebSocket Ping:** WebSocket endpoint connectivity checking
+```
+epoch N opens
+  → mutations tagged epoch N
+  → SnapshotBarrier enters draining mode
+  → in-flight mutations complete
+  → snapshot seals epoch N with state_hash + logical_clock
+epoch N+1 opens immediately
+```
 
-**Service Map:** 25+ known services (FTP, SSH, HTTP, SMTP, MySQL, PostgreSQL, MongoDB, Redis, RDP, VNC, etc.)
+This eliminates the mid-transition ambiguity that causes partial state captures.
 
-**Example:** `"Scan localhost for open ports"` → Returns list of open ports with service names
+### Key Phase 7 Files
 
-### 6. **EmailAgent** (Full SMTP/IMAP Automation)
-- **Send Emails:** SMTP with plain text, HTML, attachments, CC, BCC
-- **Receive Emails:** IMAP with folder browsing, search, filtering
-- **Attachments:** Download, attach files, save to disk, MIME handling
-- **Email Threading:** Message-ID tracking, in-reply-to chains, conversation grouping
-- **OAuth2 Support:** Modern authentication for Gmail, Outlook, etc.
-- **Email Flags:** Mark as read/unread, starred, flagged, spam
-- **Folder Operations:** Move between folders, create labels, delete messages
-- **Draft Support:** Create drafts, auto-save before sending
-- **Header Parsing:** Full email header inspection
-- **SSL/TLS:** Secure connections with certificate verification
-
-**Supports:** Gmail, Outlook, Yahoo, corporate SMTP/IMAP servers
-
-**Example:** `"Send an email to john@example.com with subject 'Meeting' and attach report.pdf"` → Connects to SMTP, sends with attachment
-
-### 7. **CodeAgent** (Python & JavaScript Intelligence)
-- **Code Execution:** Run Python/JavaScript with timeout, memory limit, output capture
-- **AST Analysis:** Detect issues, measure complexity, identify anti-patterns
-- **Code Formatting:** black, autopep8 integration
-- **Refactoring:** Extract functions, rename variables, reduce complexity
-- **Git Integration:** Commit, push, pull, diff, log, branch operations
-- **Virtual Environments:** Create, activate, manage venv
-- **Package Management:** pip install, requirements.txt, version management
-- **Static Analysis:** Pylint, flake8, mypy, bandit integration
-- **Test Generation:** Generate unit tests, run pytest, report coverage
-- **Profiling:** cProfile execution, identify bottlenecks
-- **Error Fixing:** Analyze errors, suggest fixes, test solutions
-
-**Safety:** Code runs in subprocess (never eval/exec in main process), with enforced timeouts
-
-**Example:** `"Write a Python script that sorts a list and run it"` → Generates code, executes, returns output
-
-### 8. **BrowserAgent** (Web Automation)
-- **URL Navigation:** Open URLs, wait for page load
-- **HTML Parsing:** Extract text, find elements, query DOM
-- **Form Interaction:** Fill forms, submit, interact with form controls
-- **Screenshot Capture:** Page screenshots, visual verification
-- **Cookie Management:** Get/set/clear cookies, session persistence
-- **Search Integration:** Web search via Google/Bing/DuckDuckGo
-
-*Note: Advanced Playwright/Selenium automation is framework-ready but currently stub*
-
-**Example:** `"Search the web for Python news"` → Opens search engine, extracts results
-
-### 9. **VerifierAgent** (Output Verification)
-- **Independent Verification:** Completely separate LLM call after every action
-- **Confidence Scoring:** 0.0-1.0 confidence with forced minimum threshold (0.7)
-- **Visual Verification:** Screenshot diff for GUI actions
-- **Semantic Matching:** Goal satisfaction checking
-- **Recovery Suggestion:** Proposes next action if verification fails
-
-**Critical feature:** Prevents hallucinated success from propagating
-
-**Example:** After ApplicationAgent draws, VerifierAgent checks: "Does this look like a red car?" → confidence 0.92
-
-### 10. **ErrorRecoveryAgent** (Automatic Failure Recovery)
-- **Strategy Pattern:** Error type → list of recovery strategies
-- **Retry Logic:** Progressive retry with modified parameters
-- **Automatic Adaptation:** Switches tools/methods on repeated failures
-- **Escalation:** After exhausting strategies, escalates to human
-
-**Recovery strategies per error type:**
-- `element_not_found` → Try alternative selector, visual location, pyautogui fallback
-- `timeout` → Retry with doubled timeout, break into smaller steps, try alternative tool
-- `command_failed` → Modify parameters, try alternative command, provide context
-- `generic` → Standard retry with exponential backoff
-
-**Example:** If clicking element fails, tries CSS → XPath → text → ARIA → visual → escalates
-
-### 11. **MemoryAgent** (Experience Management)
-- **Context Assembly:** Pull relevant episodic + semantic memories for current task
-- **Experience Storage:** Persist task outcomes, successes, failures with metadata
-- **Semantic Search:** Find similar past experiences using embeddings
-- **Memory Consolidation:** Prune old memories, compact learning journal
-- **Skill Library:** Store and retrieve successful action sequences
-- **Pattern Recognition:** Automatic lesson extraction from multiple successes
-
-**14-table SQLite database** backing all memory operations
-
-**Example:** `"Remember this worked well"` → Stores experience with embedding for future similar tasks
-
-### 12. **PaintAgent** (MS Paint Automation)
-- **Shape Drawing:** Lines, rectangles, circles, polygons
-- **Color Filling:** Fill buckets, color picker operations
-- **Text Input:** Text insertion with font control
-- **Canvas Detection:** Automated canvas boundary finding via vision
-- **Save Operations:** File save with path specification
-- **Drawing Sequencing:** Multi-step drawing from LLM plan
-
-**Example:** `"Fill this shape with blue"` → Locates color picker, sets blue, applies fill
+| File | Purpose |
+|---|---|
+| `core/synchronization.py` | `LogicalClock`, `EpochManager`, `SnapshotBarrier` |
+| `core/causal_scheduler.py` | DAG scheduler + `SchedulerTraceLog` |
+| `core/replay_engine.py` | DAG-based replay (backward-compatible with Phase 6 logs) |
+| `core/state_snapshot.py` | Epoch-sealed snapshot manager |
+| `core/base_agent.py` | `EffectJournal` with epoch+clock tagging |
 
 ---
 
-## Core Architecture
+## Recovery Semantics
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           NovaMind v3.0 Architecture                        │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│  Input: PyQt6 UI / CLI                                                       │
-│         │                                                                    │
-│         ▼                                                                    │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                    BRAIN (Orchestrator)                              │   │
-│  │  • Parse natural language → TaskPlan (LLM + O(1) fallback)         │   │
-│  │  • Validate state transitions (VALID_TRANSITIONS frozenset)        │   │
-│  │  • Dispatch steps to agents (O(1) dict lookup)                     │   │
-│  │  • Checkpoint every transition to StateManager (SQLite)            │   │
-│  │  • Emit transitions to EventBus (session replay)                   │   │
-│  │  • Verify results with VerifierAgent (independent LLM)             │   │
-│  │  • Recover from failures (strategy pattern)                        │   │
-│  └──────────────────────────┬───────────────────────────────────────────┘   │
-│                             │                                                │
-│         ┌───────────────────┼────────────────────┐                           │
-│         │                   │                    │                           │
-│         ▼                   ▼                    ▼                           │
-│  ┌─────────────┐  ┌──────────────────┐  ┌──────────────────────┐            │
-│  │ EventBus    │  │ StateManager     │  │ ParallelExecutor     │            │
-│  │ pub/sub     │  │ SQLite           │  │ asyncio DAG          │            │
-│  │ session     │  │ checkpoint       │  │ scatter/gather       │            │
-│  │ replay      │  │ crash recovery   │  │ timeout + retry      │            │
-│  └─────────────┘  └──────────────────┘  └──────────────────────┘            │
-│                                                                              │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                      12 AGENT LAYER                                  │   │
-│  │                                                                       │   │
-│  │  ApplicationAgent   SystemAgent      FileAgent       CodeAgent       │   │
-│  │  DataAgent          NetworkAgent     EmailAgent      BrowserAgent    │   │
-│  │  VerifierAgent      ErrorRecoveryAgent  MemoryAgent   PaintAgent     │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                    INFRASTRUCTURE                                    │   │
-│  │  Memory System       Security Layer      Vision System               │   │
-│  │  (14-table SQLite)   (O(1) blacklist)    (OCR + UIA + screens)       │   │
-│  │  LLM Router          Task Parser         Event Bus                   │   │
-│  │  (8 providers)       (NLU + fallback)    (observability)             │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│                                                                              │
-│  ┌──────────────────────────┐      ┌─────────────────────────────────────┐  │
-│  │ PyQt6 Task Window        │      │ Nova Mindscape (GoDot)     │  │
-│  │ Real-time status         │      │ Optional task visualization         │  │
-│  │ 30 FPS animation         │      │ Cyberpunk aesthetic                 │  │
-│  │ System tray integration  │      │                                     │  │
-│  └──────────────────────────┘      └─────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
+NovaMind's recovery model guarantees:
+
+1. **Snapshot**: at any point, the authoritative runtime state can be captured atomically (barrier-protected, epoch-sealed, SHA-256 hashed)
+2. **Delta Replay**: events that occurred after the last snapshot are replayed through the `CausalScheduler` DAG in correct causal order
+3. **Equivalence**: `execute(events) → hash` must equal `replay(snapshot + delta_events) → hash` under any concurrency timing
+
+This is validated by `tests/test_replay_equivalence.py`:
+- deterministic event sequences
+- randomized async yields
+- snapshot + delta recovery scenarios
+- Phase 6 backward-compatible log format
+
+### Replay Validation (4-Layer)
+
+```bash
+python tools/replay_validator.py <session.jsonl>
 ```
 
-### Data Flow: User Request to Task Execution
+| Layer | What it checks |
+|---|---|
+| L1 Structural | Required fields, no duplicate msg_ids |
+| L2 Temporal | Causal parent ordering, legal FSM transitions |
+| L3 Semantic | Reconstructed task states match last heartbeat |
+| L4 Hash | Per-checkpoint SHA-256 is reproducible |
+
+---
+
+## Agent Workloads
+
+Agents are workloads managed by the kernel. Each agent inherits from `BaseAgent`, uses O(1) dict dispatch (no if/elif chains), and logs side-effects to `EffectJournal` tagged with epoch and logical clock.
+
+| Agent | Domain |
+|---|---|
+| `ApplicationAgent` | Desktop app control, MS Paint drawing, window management |
+| `SystemAgent` | Process, registry, services, firewall, audio, display, power |
+| `FileAgent` | Read/write/copy/move, archives, search, duplicate detection |
+| `DataAgent` | CSV/Excel/JSON/SQL/Parquet, safe formula eval, statistics |
+| `NetworkAgent` | Port scanning, DNS, HTTP, SSL, WiFi, traceroute |
+| `EmailAgent` | SMTP/IMAP, attachments, threading, OAuth2 |
+| `CodeAgent` | Python/JS execution, AST analysis, git, testing |
+| `BrowserAgent` | URL navigation, form interaction, web search |
+| `VerifierAgent` | Independent LLM verification after every action |
+| `ErrorRecoveryAgent` | Strategy-pattern failure recovery and escalation |
+| `MemoryAgent` | SQLite-backed episodic/semantic memory |
+| `PaintAgent` | MS Paint shape drawing, color fill, canvas detection |
+
+### Agent Execution Flow
 
 ```
-User: "Send an email to alice@example.com with subject 'Report' and attach results.csv"
+User request
   │
   ▼
-TaskParser.parse(request)
-  ├── LLM: NLU → structured TaskPlan
-  ├── Fallback: O(1) keyword detection if LLM fails
-  └── Returns: TaskPlan { type: EMAIL, steps: [...], risk: LOW }
+TaskParser.parse()  →  LLM NLU + O(1) keyword fallback
   │
   ▼
 Brain.process_request()
-  ├── CommandGuard.check(plan)  → SAFE ✓
+  ├── CommandGuard.check()           # O(1) frozenset security check
   ├── EventBus.emit("task_started")
-  ├── StateManager.update(PENDING → RUNNING)
-  └── _run_task_execution()
-      │
-      ├─→ Step 1: EmailAgent.send_email()
-      │   ├── Connect to SMTP server
-      │   ├── Attach results.csv from disk
-      │   ├── Set subject, recipient, body
-      │   ├── Send message
-      │   └── Return: { success: true, message_id: "..." }
-      │
-      ├─→ VerifierAgent.verify()
-      │   ├── Independent LLM call
-      │   ├── Check: "Was email sent successfully?"
-      │   ├── Confidence: 0.95
-      │   └── Return: { satisfied: true, confidence: 0.95 }
-      │
-      └─→ Brain.finalize()
-          ├── StateManager.update(RUNNING → SUCCESS)
-          ├── EventBus.emit("task_completed")
-          ├── MemoryAgent.store_experience()
-          └── UI callback with result
+  ├── CausalScheduler.submit()       # tag with epoch + logical_clock
+  └── Agent dispatch (dict lookup)
+        │
+        ├── Agent executes
+        ├── EffectJournal.record_effect()   # epoch + clock tagged
+        ├── VerifierAgent.verify()          # independent LLM check
+        └── EventBus.emit("task_completed") # journaled by EventRecorder
 ```
 
 ---
@@ -315,28 +244,22 @@ Brain.process_request()
 ### Installation
 
 ```bash
-# Clone or download NovaMind
 cd Novamind
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Install Playwright browsers (for BrowserAgent)
-playwright install chromium
+playwright install chromium   # for BrowserAgent
 ```
 
 ### Configuration
 
 ```bash
-# Create config directory and get API key
+# Create config and add at least one LLM key
 python main.py --setup
 
 # Edit ~/.novamind/.env
-# Minimum requirement: At least one LLM API key
-GROQ_API_KEY=gsk_...           # Free, fast (recommended for start)
+GROQ_API_KEY=gsk_...     # free, fast (recommended)
 ```
 
-### Run NovaMind
+### Run
 
 ```bash
 python main.py
@@ -345,381 +268,133 @@ python main.py
 ### Example Tasks
 
 ```
-"Draw a blue sports car in MS Paint and save it to Desktop"
-"Send an email to john@example.com with subject 'Meeting' and attach agenda.pdf"
-"Show me CPU and RAM usage"
-"Read sales.csv and show revenue by product"
+"Draw a red sports car in MS Paint and save to Desktop"
+"Send email to john@example.com with agenda.pdf attached"
 "Scan localhost for open ports"
-"Search the web for latest Python news"
-"Write a Python script that sorts a list and run it"
-"List all files in Downloads folder that were modified today"
-"Find duplicate files in my Documents folder"
-"Connect to database and query last 100 customers"
+"Show CPU and RAM usage"
+"Read sales.csv and show revenue by region"
+"List all Python files on Desktop"
+"Write a Python quicksort and run it"
 ```
-
----
-
-## Detailed Capabilities
-
-### Desktop Automation & Application Control
-- Launch **any** Windows application (Start menu search, Win+R, executable path)
-- Real mouse movements via pyautogui (not event simulation)
-- Keyboard input with clipboard support
-- MS Paint drawing: shapes, colors, pen properties, canvas management
-- Window focus, minimize, maximize, position queries
-- Real-time screen monitoring and change detection
-
-### Complete File System Management
-- Read/write text with encoding auto-detection
-- Binary file inspection and hexdump
-- Recursive copy/move/delete with safe trash backup
-- Archive creation: ZIP, TAR, GZ, BZ2, LZMA
-- Archive extraction: all formats supported
-- Magic-byte file type detection (not extension-based)
-- Diff generation: line-by-line comparison
-- File search: regex and glob patterns
-- Duplicate finding: MD5 hashing
-- Metadata: query/edit timestamps, permissions, file sizes
-- Directory watching: real-time change notifications
-
-### Multi-Format Data Processing
-- **CSV:** Read, write, parse with encoding detection
-- **Excel:** XLSX/XLS reading and writing
-- **JSON:** Parse, transform, validate
-- **SQL:** SQLite + any SQLAlchemy-supported database
-- **Parquet:** Read/write columnar data
-- Safe formula evaluation: AST-whitelisted row-level formulas
-- Statistical analysis: mean, median, std dev, quartiles, histograms
-- Data transformation: filter, sort, group, pivot, aggregate
-- Schema inference: automatic type detection
-- Profiling: row/column/type summaries with null counts
-
-### Network & Security Operations
-- **Port Scanning:** Multi-threaded with timeout, service identification
-- **Service Mapping:** 25+ known services (SSH, HTTP, MySQL, MongoDB, etc.)
-- **DNS Operations:** Lookups, reverse lookups, MX records
-- **HTTP Requests:** Full SSL verification, redirect following, timeout handling
-- **SSL Certificates:** Expiry checking, validity verification
-- **WiFi Management:** Windows WiFi profile enumeration
-- **IP Information:** Geolocation, ISP lookup
-- **Bandwidth Monitoring:** Network adapter stats, bytes sent/received
-- **Traceroute:** Path tracing to remote hosts
-- **WebSocket:** Endpoint connectivity checking
-
-### Email Automation
-- **Send:** SMTP with TLS/SSL, HTML, attachments, CC, BCC
-- **Receive:** IMAP with folder browsing, search, filtering
-- **Attachments:** Download, save to disk, attachment inspection
-- **Threading:** Message-ID chains, in-reply-to relationships
-- **OAuth2:** Modern authentication (Gmail, Outlook, Yahoo)
-- **Folders:** Move messages, create labels, archive
-- **Flags:** Mark read/unread, starred, flagged, spam
-- **Drafts:** Create, auto-save, send
-- **Headers:** Full header inspection and parsing
-
-### Code Intelligence
-- **Write:** Generate Python/JavaScript/TypeScript from descriptions
-- **Execute:** Subprocess isolation, timeout (default 30s), output capture
-- **Analyse:** AST inspection, complexity metrics, anti-pattern detection
-- **Fix:** Error analysis, targeted fixes, test-and-verify
-- **Refactor:** Function extraction, variable renaming, complexity reduction
-- **Git:** Commit, push, pull, diff, log, branching
-- **Virtual Envs:** Create, activate, manage
-- **Packages:** pip install, requirements.txt, version management
-- **Testing:** Generate tests, run pytest, coverage reporting
-- **Static Analysis:** Pylint, flake8, mypy, bandit integration
-- **Profiling:** Bottleneck identification via cProfile
-
-### Windows System Control
-- **Processes:** List, kill, query by PID/name, set priority
-- **Registry:** Read, write, delete keys and values
-- **Services:** Start, stop, pause, query, enable/disable
-- **Scheduled Tasks:** Create, delete, list, trigger
-- **Event Logs:** Query application/system/security events
-- **Firewall:** Add/remove/list rules, query status
-- **Performance:** Real-time CPU, RAM, disk, GPU, network metrics
-- **Audio:** Volume control, device switching, mute/unmute
-- **Display:** Resolution, refresh rate, brightness control
-- **Printers:** List, set default, print files
-- **Network:** IP configuration, DNS settings, adapter enumeration
-- **Power:** Sleep, hibernate, restart, shutdown with delay
-- **Notifications:** Windows toast alerts
-- **Startup Items:** Add/remove autostart programs
-
-### Vision & Screen Analysis
-- **Screenshot:** Full screen or specific region/window
-- **OCR:** Dual-engine (Tesseract + EasyOCR) with fallback
-- **Screen Description:** LLM-powered natural language description
-- **Element Detection:** UI element finding via OCR + UIA + template matching
-- **Image Comparison:** Structural similarity, change detection
-- **Window Management:** Active window title, window enumeration, focus control
-- **Template Matching:** OpenCV-based pattern recognition
-- **Color Analysis:** Dominant colors, palette extraction
-
----
-
-## System Components
-
-### Brain (core/brain.py)
-**Central orchestrator** implementing state machine with:
-- VALID_TRANSITIONS frozenset enforces finite state machine
-- Every transition: StateManager (SQLite) → EventBus → UI callback
-- O(1) agent dispatch via dict lookup
-- Per-step verification and recovery loop
-- Automatic retry with incremental backoff
-
-### Task Parser (core/task_parser.py)
-**Natural language understanding** with:
-- LLM-based parsing (primary path)
-- O(1) task-type detection: WORD_TO_TASK_TYPE inverted index
-- O(1) risk assessment: priority-ordered frozensets
-- Fast-paths for common patterns (drawing, app control)
-
-### Event Bus (core/event_bus.py)
-**Pub/sub observability** emitting:
-- task_started, task_completed, task_failed, task_retrying
-- tool_call_start, tool_call_end, tool_call_error
-- agent_handoff, memory_read, memory_write, safety_check events
-- Complete session replay: full chronological event log
-- Persistent: all events written to SQLite
-
-### State Manager (core/state_manager.py)
-**Write-on-every-transition** SQLite checkpointing:
-- dag_nodes table: task status, results, dependencies
-- Crash recovery: reconstruct DAG from database
-- All transitions atomic: in-memory + SQLite + EventBus
-
-### LLM Router (core/llm_router.py)
-**Multi-provider failover** supporting:
-- Groq (free, fast Llama 3.3 70B)
-- Together AI (long context, code)
-- OpenRouter (100+ models)
-- xAI (Grok)
-- Google Gemini (multimodal)
-- Hyperbolic, NVIDIA NIM, Cerebras
-
-**Task-type routing:** Different models for different task types
-
-### Memory System (memory/memory_system.py)
-**14-table SQLite** with:
-- sessions, tasks, task_steps, agent_actions
-- memories (episodic + embeddings)
-- learning_journal, skills, error_log
-- screenshots, llm_calls, user_preferences
-- ui_events, system_events, dag_nodes
-- Semantic search via sentence-transformers
-- WAL mode: crash-safe writes
-
-### Vision System (vision/vision_system.py)
-**Screen perception** providing:
-- Screenshot capture via pyautogui
-- Dual OCR: Tesseract + EasyOCR with auto-fallback
-- Windows UI Automation (UIA) element detection
-- Image comparison and structural similarity
-- Template matching via OpenCV
-- Element caching for performance
-
-### Security Layer (security/command_guard.py)
-**O(1) access control** with:
-- BLACKLIST_EXACT: frozenset exact command blocking
-- Protected paths: C:\Windows, /usr/bin, etc (immutable)
-- Risk assessment: SAFE → CRITICAL classification
-- Frozenset membership tests (no iteration)
-
-### User Interface (ui/task_window.py)
-**PyQt6 animated UI** with:
-- 30 FPS cyberpunk aesthetics
-- Real-time status updates
-- Task history sidebar
-- Result display and error messages
-- System tray integration
 
 ---
 
 ## Project Structure
 
 ```
-novamind/
-├── main.py                 # Entry point
-├── config.py               # Central constants (O(1) lookups)
-├── requirements.txt        # Dependencies
-├── README.md              # This file
-├── SETUP.md               # Installation
+Novamind/
+├── main.py                      # Entry point
+├── config.py                    # Central constants (O(1) lookups)
+├── requirements.txt
 │
-├── agents/                # 12 Specialized agents
-│   ├── application_agent.py    # Desktop app control
-│   ├── system_agent.py         # Windows system ops
-│   ├── file_agent.py           # Filesystem ops
-│   ├── code_agent.py           # Code intelligence
-│   ├── data_agent.py           # Data processing (CSV/Excel/SQL/Parquet)
-│   ├── network_agent.py        # Network & security
-│   ├── email_agent.py          # SMTP/IMAP automation
-│   ├── browser_agent.py        # Web automation
-│   ├── verifier_agent.py       # Output verification
-│   ├── error_recovery_agent.py # Failure recovery
-│   ├── memory_agent.py         # Experience management
-│   ├── error_handler.py        # Error analysis
-│   ├── apps/paint_agent.py     # MS Paint control
-│   └── __init__.py
+├── core/                        # Runtime kernel
+│   ├── synchronization.py       # LogicalClock, EpochManager, SnapshotBarrier [Phase 7]
+│   ├── causal_scheduler.py      # DAG scheduler + SchedulerTraceLog [Phase 7]
+│   ├── replay_engine.py         # Causal DAG-based replay [Phase 7]
+│   ├── state_snapshot.py        # Epoch-sealed snapshot manager [Phase 6+7]
+│   ├── runtime_supervisor.py    # FSM supervisor + escalation [Phase 6]
+│   ├── divergence_analyzer.py   # Split-brain health scoring [Phase 5]
+│   ├── canonical.py             # Deterministic SHA-256 hashing
+│   ├── event_bus.py             # Pub/sub + session replay
+│   ├── event_recorder.py        # JSONL event journal
+│   ├── runtime_auditor.py       # Violation detection
+│   ├── bridge_server.py         # WebSocket IPC (PRODUCTION/CHAOS)
+│   ├── task_manager.py          # Task lifecycle tracking
+│   ├── brain.py                 # Orchestrator state machine
+│   ├── task_parser.py           # NLU + O(1) fallback
+│   ├── base_agent.py            # Agent base + EffectJournal
+│   ├── llm_router.py            # Multi-provider LLM routing
+│   ├── state_manager.py         # SQLite checkpointing
+│   ├── os_executor.py           # pyautogui + focus guards
+│   ├── uia_executor.py          # Windows UI Automation
+│   └── scheduler.py             # Task scheduling
 │
-├── core/                  # Core orchestration
-│   ├── brain.py               # State machine orchestrator
-│   ├── task_parser.py         # NLU with O(1) fallback
-│   ├── llm_router.py          # Multi-provider LLM routing
-│   ├── event_bus.py           # Pub/sub + session replay
-│   ├── state_manager.py       # SQLite checkpointing
-│   ├── parallel_engine.py     # asyncio DAG executor
-│   ├── scheduler.py           # Task scheduling
-│   ├── element_finder.py      # UI element detection
-│   ├── vision_system.py       # Screen capture + OCR
-│   ├── os_executor.py         # Command execution
-│   ├── bridge_server.py       # IPC
-│   ├── log_manager.py         # Structured logging
-│   ├── runtime_paths.py       # Path resolution
-│   ├── uia_executor.py        # Windows UI Automation
-│   ├── perception.py          # Sensor aggregation
-│   ├── tool_result.py         # Tool result dataclass
-│   ├── base_agent.py          # Agent base class
-│   └── __init__.py
+├── agents/                      # Agent workloads
+│   ├── application_agent.py
+│   ├── system_agent.py
+│   ├── file_agent.py
+│   ├── code_agent.py
+│   ├── data_agent.py
+│   ├── network_agent.py
+│   ├── email_agent.py
+│   ├── browser_agent.py
+│   ├── verifier_agent.py
+│   ├── error_recovery_agent.py
+│   ├── memory_agent.py
+│   └── apps/paint_agent.py
 │
-├── memory/                # Persistent memory
-│   ├── memory_system.py       # 14-table SQLite
-│   └── __init__.py
+├── tests/
+│   ├── test_core.py                   # Core unit tests
+│   ├── test_split_brain_recovery.py   # Phase 6 recovery tests
+│   ├── test_async_concurrency.py      # Phase 7 barrier + scheduler tests
+│   └── test_replay_equivalence.py     # Phase 7 hash equivalence tests
 │
-├── security/              # Access control
-│   ├── command_guard.py       # O(1) blacklist
-│   ├── permission_manager.py  # RBAC
-│   └── __init__.py
+├── tools/
+│   └── replay_validator.py            # 4-layer deterministic validation
 │
-├── vision/                # Screen perception
-│   ├── vision_system.py       # OCR + element detection
-│   ├── screen_analyzer.py     # Screenshot analysis
-│   └── __init__.py
-│
-├── ui/                    # User interface
-│   ├── task_window.py         # PyQt6 UI (30 FPS)
-│   └── __init__.py
-│
-├── game/                  # Optional 3D visualization
-│   ├── nova_mindscape.py      # Ursina 3D game
-│   ├── nova_mindscape_launcher.py
-│   ├── texture_gen.py
-│   └── assets/
-│
-├── godot_client/          # Alternative Godot client (optional)
+├── godot_client/                # Visualization client (read-only)
 │   ├── Main.tscn
 │   ├── NetworkManager.gd
-│   ├── Terminal.gd
-│   └── project.godot
+│   └── Terminal.gd
 │
-├── tools/                 # Development utilities
-│   ├── create_full_audit.py
-│   ├── generate_audit.py
-│   ├── import_checker.py
-│   ├── run_dep_check.py
-│   └── setup_godot.py
-│
-└── tests/                 # Test suite
-    ├── test_core.py
-    ├── test_focus_chaos.py
-    ├── verify_3_fixes.py
-    └── test.py
+└── .github/workflows/
+    └── runtime_certification.yml      # CI: 43-test certification suite
 ```
+
+---
+
+## CI / Certification
+
+Every push to `main` runs the **NovaMind Runtime Certification** suite:
+
+```yaml
+- Run Deterministic Validation Suite   # test_core.py + test_split_brain_recovery.py
+- Run Phase 7 Concurrency & Replay     # test_async_concurrency.py + test_replay_equivalence.py
+- Run Schema Validator                  # 4-layer replay_validator.py
+```
+
+**Current status: 43/43 tests passing.**
+
+The Phase 7 test suite verifies:
+- Lamport clock correctness (tick, merge, snapshot)
+- Epoch advancement (sealed on success, no advance on abort)
+- Snapshot barrier: mutations drain before seal, new mutations blocked during freeze
+- 100 concurrent mutations with zero state tearing
+- CausalScheduler: clock ordering, single/many-to-many parents, deadlock detection
+- Replay equivalence under deterministic and randomized timing
+- Snapshot + delta recovery produces identical canonical hash
 
 ---
 
 ## Development
 
-### Running Tests
+### Run Tests
 
 ```bash
-pytest tests/
+pytest tests/ -v
 ```
 
-### Adding a New Agent
+### Adding a New Agent Workload
 
-1. Create `agents/my_agent.py` inheriting from `BaseAgent`
-2. Implement `execute(action: str, params: Dict) -> Dict`
-3. Register in Brain's agent dict
-4. Add tests
+1. Create `agents/my_agent.py` inheriting from `core.base_agent.BaseAgent`
+2. Populate `self.handlers` dict with `action_name → callable` (no if/elif)
+3. Use `self.effect_journal.record_effect(...)` for any irreversible side-effect
+4. Register in `Brain`'s agent dict
+5. Add tests
 
-### Configuration
+### Debugging Replay Divergence
 
-**File:** `config.py` — Central constants with O(1) dict lookups, no hardcoded values
+1. Check `SchedulerTraceLog` entries — every dispatch decision is recorded
+2. Run `tools/replay_validator.py <session.jsonl>` for 4-layer validation
+3. Compare canonical hashes at epoch boundaries
+4. Look for events with missing `causal_parents` — these become causally independent and may reorder
 
-**Environment:** `~/.novamind/.env`
-```
-GROQ_API_KEY=gsk_...
-LOG_LEVEL=INFO
-PYAUTOGUI_PAUSE=0.05
-```
+### Key Design Rules
 
-### Debugging
-
-```python
-from core.log_manager import get_logger
-logger = get_logger("MyModule")
-logger.info("Message")
-logger.error("Error", exc_info=True)
-```
-
-Session replay:
-```python
-mem = MemorySystem()
-events = mem.get_system_events(session_id="abc123")
-```
-
-### Performance Profiling
-
-```bash
-python -m cProfile -s cumulative main.py > profile.txt
-```
-
----
-
-## Troubleshooting
-
-### OCR not working
-- Falls back to EasyOCR automatically
-- For Tesseract: install from https://github.com/UB-Mannheim/tesseract
-
-### LLM Provider Errors
-- Check API keys in `~/.novamind/.env`
-- Router automatically failsover to next provider
-- Check internet connectivity
-
-### Element Not Found
-- ApplicationAgent tries: CSS → XPath → text → ARIA → vision → escalates
-- All failures logged with recovery suggestions
-
-### Email Connection Issues
-- Verify IMAP/SMTP ports (typically 993 for IMAP, 587 for SMTP)
-- Check if Gmail requires "Less secure app access" or App Passwords
-- Corporate networks may require proxy configuration
-
----
-
-## Architecture Patterns
-
-### O(1) Routing
-No if/elif chains. All dispatch via dict lookup or frozenset:
-```python
-agent = agents.get(step.agent)        # Dict lookup
-error_type_strategies = RECOVERY_STRATEGIES.get(error_type)  # Dict lookup
-is_risky = keyword in CRITICAL_KEYWORDS  # frozenset O(1)
-```
-
-### State Machine
-Every state transition validated against VALID_TRANSITIONS frozenset.
-
-### Verified Execution
-Every tool call followed by independent VerifierAgent check.
-
-### Crash Recovery
-All state persisted to SQLite immediately.
-
-### Event-Driven Architecture
-All significant actions emitted to EventBus for debugging and replay.
+- **Godot must never cache authoritative logic** — it is a visualization client only
+- **No silent healing** — every reconciliation event must be logged
+- **Every effect is journaled** — `EffectJournal` tags epoch + logical clock
+- **Determinism is verified, not assumed** — `test_replay_equivalence.py` is the ground truth
 
 ---
 
@@ -727,24 +402,6 @@ All significant actions emitted to EventBus for debugging and replay.
 
 Apache License 2.0 — See LICENSE file for details.
 
-## Contributing
-
-Contributions welcome! Areas of focus:
-
-- Expanding agent capabilities
-- Performance optimizations
-- Additional LLM provider support
-- Enhanced vision accuracy
-- Extended test coverage
-
-## Support
-
-For issues, questions, or suggestions:
-1. Check existing GitHub issues
-2. Review logs in `~/.novamind/logs/`
-3. Enable debug: `LOG_LEVEL=DEBUG`
-4. Submit issue with logs and reproduction steps
-
 ---
 
-**NovaMind v3.0** — 12 agents, event-driven, crash-safe, verified execution.
+**NovaMind v4.0** — Recoverable Distributed Runtime Kernel. 43 tests. Deterministic replay. Epoch-sealed snapshots. Causal scheduling.

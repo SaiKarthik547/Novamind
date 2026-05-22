@@ -5,11 +5,23 @@ The foundational base class for all NovaMind agents.
 Enforces the strict O(1) branchless execution architecture.
 Provides a universal capability registry (plugin model) so agents can 
 communicate and execute actions without if/elif dispatch chains.
+
+Phase 7: EffectJournal now tags every side-effect with epoch_id and
+logical_clock so the ReplayEngine can reconstruct causal ordering
+deterministically without relying on wall-clock timestamps.
 """
 import logging
 import uuid
 import time
 from typing import Any, Callable, Dict, List
+
+# Phase 7 synchronization primitives — imported lazily to avoid circular
+# imports during early boot (main.py registers agents before the loop starts).
+try:
+    from core.synchronization import get_runtime_clock, get_epoch_manager
+    _SYNC_AVAILABLE = True
+except ImportError:
+    _SYNC_AVAILABLE = False
 
 logger = logging.getLogger("BaseAgent")
 
@@ -22,12 +34,26 @@ class EffectJournal:
         self.log: List[Dict[str, Any]] = []
 
     def record_effect(self, action: str, parameters: dict, result: dict):
+        # Tag with Logical Clock and Epoch for causal replay ordering.
+        # Falls back gracefully if synchronization module is not yet available
+        # (e.g., during unit tests that don't boot the full runtime).
+        clock_value = 0
+        epoch_id = 0
+        if _SYNC_AVAILABLE:
+            try:
+                clock_value = get_runtime_clock().tick()
+                epoch_id = get_epoch_manager().current
+            except Exception:
+                pass
+
         self.log.append({
             "id": str(uuid.uuid4()),
             "timestamp": time.time(),
             "action": action,
             "parameters": parameters,
-            "result": result
+            "result": result,
+            "epoch_id": epoch_id,
+            "logical_clock": clock_value,
         })
 
 class BaseAgent:
