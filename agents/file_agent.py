@@ -198,7 +198,7 @@ class FileAgent(BaseAgent):
     # ─────────────────────────────────────────────────────────────────────────
 
     def read_file(self, path: str, offset: int = 0,
-                   limit: int = None, encoding: str = None) -> Dict:
+                   limit: int = None, encoding: str = None, context: Any = None) -> Dict:
         """Read text file. Auto-detect encoding if not specified."""
         p    = self._validate(path)
         size = p.stat().st_size
@@ -206,10 +206,17 @@ class FileAgent(BaseAgent):
         if not encoding:
             encoding = self._sniff_encoding(p) or "utf-8"
 
-        with open(p, "r", encoding=encoding, errors="replace") as f:
+        if context and hasattr(context, 'sandbox'):
+            # Phase 8 Execution Kernel isolation
+            raw_content = context.sandbox.read_file(context.lease.lease_id, str(p), mode="r")
             if offset:
-                f.seek(offset)
-            content = f.read(limit) if limit else f.read()
+                raw_content = raw_content[offset:]
+            content = raw_content[:limit] if limit else raw_content
+        else:
+            with open(p, "r", encoding=encoding, errors="replace") as f:
+                if offset:
+                    f.seek(offset)
+                content = f.read(limit) if limit else f.read()
 
         return {
             "success":   True,
@@ -281,7 +288,7 @@ class FileAgent(BaseAgent):
     def write_file(self, path: str, content: str,
                     encoding: str = "utf-8",
                     overwrite: bool = True,
-                    create_parents: bool = True) -> Dict:
+                    create_parents: bool = True, context: Any = None) -> Dict:
         """Write text to file."""
         p = Path(path)
         self._check_protected(p)
@@ -289,8 +296,11 @@ class FileAgent(BaseAgent):
             return {"success": False, "error": "File exists and overwrite=False"}
         if create_parents:
             p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "w", encoding=encoding) as f:
-            f.write(content)
+        if context and hasattr(context, 'sandbox'):
+            context.sandbox.write_file(context.lease.lease_id, str(p), content, mode="w")
+        else:
+            with open(p, "w", encoding=encoding) as f:
+                f.write(content)
         return {
             "success":       True,
             "path":          str(p.resolve()),
@@ -385,7 +395,7 @@ class FileAgent(BaseAgent):
             "rollback_cmd": f"move '{dst}' '{src}'",
         }
 
-    def delete_file(self, path: str, permanent: bool = False) -> Dict:
+    def delete_file(self, path: str, permanent: bool = False, context: Any = None) -> Dict:
         """Delete file/directory (moves to trash by default)."""
         p = self._validate(path)
         self._check_protected(p)
@@ -400,12 +410,19 @@ class FileAgent(BaseAgent):
             # Dispatch based on is_file/is_dir state
             _BACKUP_HANDLERS[p.is_file()]() if p.exists() else None
 
-        _DELETE_HANDLERS = {
-            "file": lambda: p.unlink(),
-            "dir":  lambda: shutil.rmtree(p)
-        }
         ptype = "file" if p.is_file() else "dir" if p.is_dir() else None
         if not ptype: return {"success": False, "error": "Path not found"}
+
+        if context and hasattr(context, 'sandbox') and ptype == "file":
+            _DELETE_HANDLERS = {
+                "file": lambda: context.sandbox.delete_file(context.lease.lease_id, str(p)),
+                "dir":  lambda: shutil.rmtree(p) # Sandbox doesn't fully wrap dir deletion yet
+            }
+        else:
+            _DELETE_HANDLERS = {
+                "file": lambda: p.unlink(),
+                "dir":  lambda: shutil.rmtree(p)
+            }
         _DELETE_HANDLERS[ptype]()
 
         return {

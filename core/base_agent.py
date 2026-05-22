@@ -93,20 +93,42 @@ class BaseAgent:
         cls._GLOBAL_REGISTRY[action_name] = handler
         logger.info(f"[BaseAgent] Capability registered: {action_name}")
 
-    def execute(self, action: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, action_or_context: Any, parameters: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         O(1) dynamic dispatcher.
         Checks local handlers first, then global registry.
+        Phase 8: Supports AgentContext injection.
         """
+        context = None
+        if hasattr(action_or_context, 'action'):
+            context = action_or_context
+            action = context.action
+            parameters = context.parameters
+        else:
+            action = action_or_context
+            parameters = parameters or {}
+
         handler = self.handlers.get(action, self._GLOBAL_REGISTRY.get(action))
         
         _no_fn = {True: lambda: {"success": False, "error": f"Unknown action: {action}"}}
         res_no_fn = _no_fn.get(handler is None)
-        return res_no_fn() if res_no_fn else self._run_fn(handler, action, parameters)
+        return res_no_fn() if res_no_fn else self._run_fn(handler, action, parameters, context)
 
-    def _run_fn(self, fn: Callable, action: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_fn(self, fn: Callable, action: str, parameters: Dict[str, Any], context: Any = None) -> Dict[str, Any]:
         try:
-            result = fn(**parameters)
+            # If the handler expects a context (e.g. has a _context kwarg), we should provide it.
+            # But for simple migration, we just pass parameters and let the handler extract what it needs,
+            # or we pass context explicitly if the handler supports it.
+            # To be safe in Python, we can check if the function accepts it, or just pass it as _context.
+            import inspect
+            sig = inspect.signature(fn)
+            kwargs = dict(parameters)
+            if "_context" in sig.parameters:
+                kwargs["_context"] = context
+            elif "context" in sig.parameters:
+                kwargs["context"] = context
+
+            result = fn(**kwargs)
             self._log(action, parameters, result.get("success", False))
             
             # If the handler explicitly tags side-effects, log them

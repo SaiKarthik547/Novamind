@@ -23,6 +23,13 @@ from core.task_parser import TaskParser, TaskPlan, TaskStep, RiskLevel
 from core.llm_router import get_router
 from core.parallel_engine import ParallelExecutionEngine, TaskNode, TaskStatus
 
+# Phase 8 Execution Kernel primitives
+from core.capability_broker import CapabilityBroker, Capability
+from core.resource_governor import ResourceGovernor
+from core.execution_sandbox import ExecutionSandbox
+from core.transaction_manager import TransactionManager, TransactionType
+from core.agent_context import AgentContext
+
 logger = logging.getLogger("Brain")
 
 
@@ -164,6 +171,12 @@ class Brain:
         self.state_manager  = state_manager
         self.verifier       = verifier
         self.recovery_agent = recovery_agent
+
+        # Phase 8 Execution Kernel instantiation
+        self.capability_broker = CapabilityBroker()
+        self.resource_governor = ResourceGovernor()
+        self.execution_sandbox = ExecutionSandbox(self.capability_broker, self.resource_governor)
+        self.transaction_manager = TransactionManager(self.state_manager, self.capability_broker)
 
         self._tasks:     Dict[str, TaskExecution] = {}
         self._lock       = threading.Lock()
@@ -571,22 +584,41 @@ class Brain:
                 "action": step.action, "step": step.step_number,
             })
 
+            # Issue a default capability lease for the step
+            lease = self.capability_broker.request_lease(
+                task_id=exec_.task_id,
+                capabilities=[c for c in Capability], # Grant all for migration
+                allowed_paths=["*"],                  # Grant all for migration
+                allowed_commands=["*"],               # Grant all for migration
+            )
+
+            context = AgentContext(
+                task_id=exec_.task_id,
+                step_number=step.step_number,
+                agent_id=step.agent,
+                action=step.action,
+                parameters=step.parameters,
+                lease=lease,
+                sandbox=self.execution_sandbox,
+                transaction_manager=self.transaction_manager
+            )
+
             result_box: List[Any] = [None]
             exc_box:    List[Any] = [None]
             needs_gui_lock = step.agent in _GUI_AGENTS
 
             def _run_with_lock():
-                with GUI_LOCK: result_box[0] = agent_obj.execute(step.action, step.parameters)
+                with GUI_LOCK: result_box[0] = agent_obj.execute(context)
             def _run_no_lock():
-                result_box[0] = agent_obj.execute(step.action, step.parameters)
+                result_box[0] = agent_obj.execute(context)
 
             def _run() -> None:
                 try:
                     if needs_gui_lock:
                         with GUI_LOCK:
-                            result_box[0] = agent_obj.execute(step.action, step.parameters)
+                            result_box[0] = agent_obj.execute(context)
                     else:
-                        result_box[0] = agent_obj.execute(step.action, step.parameters)
+                        result_box[0] = agent_obj.execute(context)
                 except Exception as exc:
                     exc_box[0] = exc
 

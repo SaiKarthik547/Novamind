@@ -221,7 +221,7 @@ class SystemAgent(BaseAgent):
     def execute_command(self, command: str, shell: bool = True,
                         cwd: str = None, env: Dict = None,
                         timeout: int = None, capture_output: bool = True,
-                        stdin_input: str = None) -> Dict:
+                        stdin_input: str = None, context: Any = None) -> Dict:
         """Execute a system command with full security checking."""
         allowed, reason = self._security_check(command)
         if not allowed:
@@ -234,13 +234,26 @@ class SystemAgent(BaseAgent):
 
         start = time.monotonic()
         try:
-            proc = subprocess.Popen(
-                command, shell=shell, cwd=cwd, env=run_env,
-                stdout=subprocess.PIPE if capture_output else None,
-                stderr=subprocess.PIPE if capture_output else None,
-                stdin=subprocess.PIPE if stdin_input else None,
-                text=True, encoding="utf-8", errors="replace",
-            )
+            if context and hasattr(context, 'sandbox'):
+                # Phase 8 Execution Kernel isolation
+                proc = context.sandbox.run_subprocess(
+                    context.lease.lease_id,
+                    command, shell=shell, cwd=cwd, env=run_env,
+                    stdout=subprocess.PIPE if capture_output else None,
+                    stderr=subprocess.PIPE if capture_output else None,
+                    stdin=subprocess.PIPE if stdin_input else None,
+                    text=True, encoding="utf-8", errors="replace",
+                )
+            else:
+                # Legacy unisolated execution
+                proc = subprocess.Popen(
+                    command, shell=shell, cwd=cwd, env=run_env,
+                    stdout=subprocess.PIPE if capture_output else None,
+                    stderr=subprocess.PIPE if capture_output else None,
+                    stdin=subprocess.PIPE if stdin_input else None,
+                    text=True, encoding="utf-8", errors="replace",
+                )
+            
             self.running_processes[proc.pid] = proc
 
             try:
