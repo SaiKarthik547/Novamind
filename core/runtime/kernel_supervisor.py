@@ -17,12 +17,14 @@ class KernelSupervisor:
     Takes ownership of all state transitions, workers, transactions, and panics.
     The Brain now delegates OS-level authority to this class.
     """
-    def __init__(self, wal_path: str = "nova_effect.wal"):
+    def __init__(self, wal_path: str = "nova_effect.wal", event_bus=None):
         self.wal = EffectWal(wal_path)
         self.reconciler = EffectReconciler(self.wal)
         self.panic_manager = PanicManager(self)
         self.transaction_manager = TransactionManager(self.wal)
-        self.scheduler = CausalScheduler()
+        self.event_bus = event_bus
+        dispatch = (lambda p: self.event_bus.emit_sync(p.get('event_type', 'system_event'), p)) if self.event_bus else lambda x: None
+        self.scheduler = CausalScheduler(dispatch_fn=dispatch)
         
         self.workers: Dict[str, WorkerSupervisor] = {}
         

@@ -22,7 +22,7 @@ from core.runtime.syscall_gate import SyscallGate
 # Phase 7 synchronization primitives — imported lazily to avoid circular
 # imports during early boot (main.py registers agents before the loop starts).
 try:
-    from core.synchronization import get_runtime_clock, get_epoch_manager
+    from core.sync.synchronization import get_runtime_clock, get_epoch_manager
     _SYNC_AVAILABLE = True
 except ImportError:
     _SYNC_AVAILABLE = False

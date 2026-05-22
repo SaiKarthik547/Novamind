@@ -58,7 +58,7 @@ def test_mid_replay_crash_simulation():
     Simulates an incremental replay over a session log where a corrupted JSON line exists mid-stream.
     Asserts STRICT mode crashes, but DIAGNOSTIC mode skips and continues.
     """
-    from core.replay_engine import ReplayEngine, ReplayMode
+    from core.replay.replay_engine import ReplayEngine, ReplayMode
     import tempfile
     import json
     from pathlib import Path

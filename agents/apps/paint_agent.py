@@ -64,13 +64,13 @@ except ImportError:
     GW_OK = False
 
 try:
-    from core.os_executor import (
+    from core.os_utils.os_executor import (
         OSExecutor, assert_window_focused, detect_paint_canvas,
         safe_drag, safe_click, safe_hotkey, release_all_modifiers,
         ActionVerifier, FocusLostError, capture_region, ExecutionDependencyError
     )
-    from core.uia_executor import UIAExecutor, UIAError
-    from core.element_finder import get_finder, ElementNotFoundError, DependencyMissingError
+    from core.os_utils.uia_executor import UIAExecutor, UIAError
+    from core.os_utils.element_finder import get_finder, ElementNotFoundError, DependencyMissingError
     CORE_OK = True
 except ImportError as _e:
     logger.warning(f"PaintAgent: core dependencies missing ({_e})")
@@ -167,7 +167,7 @@ class PaintAgent(BaseAgent):
         """Generate stroke plan via LLM, fall back to geometric sports car."""
         plan = DrawingPlan(subject, cw, ch)
         try:
-            from core.llm_router import get_router
+            from core.orchestration.llm_router import get_router
             import json
             router = get_router()
             prompt = (

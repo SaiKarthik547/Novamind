@@ -228,7 +228,7 @@ class TestCanvasClamping:
     def test_dpi_scale_1_in_dpi_aware_process(self):
         """On a DPI-aware process (Qt running), DPI_SCALE should be 1.0."""
         try:
-            from core.os_executor import DPI_SCALE
+            from core.os_utils.os_executor import DPI_SCALE
             # DPI_SCALE should be 1.0 if the process is DPI-aware
             # (which it will be in any environment that has Qt running).
             assert DPI_SCALE >= 1.0, f"DPI_SCALE={DPI_SCALE} \u2014 expected \u22651.0"

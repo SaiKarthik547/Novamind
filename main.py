@@ -170,19 +170,19 @@ class NovaMindApp:
             return False
 
         # Initialize Core Infrastructure
-        from core.event_recorder import EventRecorder
+        from core.replay.event_recorder import EventRecorder
         # Note: RuntimeAuditor and RuntimeSupervisor are now initialized after EventBus
 
         # LLM Router
         logger.info("-> LLM Router")
-        from core.llm_router import get_router
+        from core.orchestration.llm_router import get_router
         router = get_router()
         status = router.get_status()
         logger.info(f"  {status['active_providers']} active provider(s)")
 
         # Session Discovery & Recovery Boot
         logger.info("-> Session Registry & Recovery")
-        from core.session_registry import SessionRegistry
+        from core.foundation.session_registry import SessionRegistry
         self.session_registry = SessionRegistry()
         
         last_session = self.session_registry.get_latest_session()
@@ -209,10 +209,10 @@ class NovaMindApp:
         # EventBus
         logger.info("-> EventBus")
         try:
-            from core.event_bus import get_event_bus
-            from core.event_recorder import EventRecorder
-            from core.runtime_supervisor import RuntimeSupervisor
-            from core.runtime_auditor import RuntimeAuditor
+            from core.orchestration.event_bus import get_event_bus
+            from core.replay.event_recorder import EventRecorder
+            from core.runtime.runtime_supervisor import RuntimeSupervisor
+            from core.runtime.runtime_auditor import RuntimeAuditor
             
             self.event_bus = get_event_bus(memory_system=self.memory)
             
@@ -255,7 +255,7 @@ class NovaMindApp:
         # StateManager
         logger.info("-> StateManager")
         try:
-            from core.state_manager import StateManager
+            from core.state.state_manager import StateManager
             db_path = str(runtime_path("memory.db"))
             self.state_manager = StateManager(db_path=db_path)
             logger.info("  StateManager ready")
@@ -320,7 +320,7 @@ class NovaMindApp:
         # Brain (wired with all new components)
         logger.info("-> Brain")
         try:
-            from core.brain import Brain
+            from core.runtime.brain import Brain
             self.brain = Brain(
                 vision_system=self.vision,
                 agents=self.agents,
@@ -343,8 +343,8 @@ class NovaMindApp:
         # Godot Bridge & Task Manager
         logger.info("-> Ecosystem Components")
         try:
-            from core.task_manager import TaskManager
-            from core.bridge_server import BridgeServer
+            from core.orchestration.task_manager import TaskManager
+            from core.ipc.bridge_server import BridgeServer
             from security.permission_manager import PermissionManager
             
             self.task_manager = TaskManager()
@@ -419,7 +419,7 @@ class NovaMindApp:
         # Scheduler
         logger.info("-> Task Scheduler")
         try:
-            from core.scheduler import TaskScheduler
+            from core.orchestration.scheduler import TaskScheduler
             self.scheduler = TaskScheduler(brain=self.brain, memory=self.memory)
             self.scheduler.start()
             logger.info("  Scheduler ready")
@@ -467,8 +467,8 @@ class NovaMindApp:
         if self.recovery_session_id:
             logger.info("-> Recovery Boot")
             try:
-                from core.runtime_store import RuntimeStore
-                from core.replay_engine import ReplayEngine, ReplayMode
+                from core.state.runtime_store import RuntimeStore
+                from core.replay.replay_engine import ReplayEngine, ReplayMode
                 
                 self.runtime_store = RuntimeStore(
                     session_id=self.recovery_session_id,
@@ -503,7 +503,7 @@ class NovaMindApp:
                 logger.error(f"  Recovery boot failed: {exc}")
         else:
             # Active session store setup
-            from core.runtime_store import RuntimeStore
+            from core.state.runtime_store import RuntimeStore
             self.runtime_store = RuntimeStore(
                 session_id=self.session_id,
                 event_bus=self.event_bus,
@@ -560,7 +560,7 @@ class NovaMindApp:
           2. Agent has a non-empty handlers dict
           3. Agent does NOT have a local execute() method (should use base class)
         """
-        from core.base_agent import BaseAgent
+        from core.foundation.base_agent import BaseAgent
         all_valid = True
         for name, agent in self.agents.items():
             # VisionSystem might not be a BaseAgent yet (legacy)

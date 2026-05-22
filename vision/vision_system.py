@@ -371,7 +371,7 @@ class VisionSystem:
         visible_text = text_r.get("text", "")[:1000]
 
         try:
-            from core.llm_router import get_router
+            from core.orchestration.llm_router import get_router
             router = get_router()
             prompt = (
                 f"Describe what is visible on this screen ({detail_level} detail).\n"

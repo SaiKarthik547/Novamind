@@ -78,7 +78,7 @@ class SnapshotStore:
             if stored_hash:
                 # Strip hash before recomputing to check integrity
                 verify_obj = {k: v for k, v in data.items() if k != "state_hash"}
-                from core.canonical import state_hash
+                from core.foundation.canonical import state_hash
                 computed = state_hash(verify_obj)
                 if computed != stored_hash:
                     logger.critical(f"Snapshot corruption detected in {latest_path.name}! Hash mismatch.")

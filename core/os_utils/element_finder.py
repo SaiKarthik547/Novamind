@@ -25,7 +25,7 @@ class DependencyMissingError(Exception):
 
 
 try:
-    from core.uia_executor import UIAExecutor, UIElement, UIAError
+    from core.os_utils.uia_executor import UIAExecutor, UIElement, UIAError
     _UIA_EXEC = UIAExecutor()
     UIA_OK = _UIA_EXEC.available
 except Exception as _e:

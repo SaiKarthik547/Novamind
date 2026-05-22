@@ -22,7 +22,7 @@ except ImportError:
     PYAUTOGUI_OK = False
 
 try:
-    from core.os_executor import ActionVerifier, FocusLostError, capture_region
+    from core.os_utils.os_executor import ActionVerifier, FocusLostError, capture_region
     OS_EXECUTOR_OK = True
 except ImportError:
     OS_EXECUTOR_OK = False

@@ -82,14 +82,14 @@ except ImportError:
 
 # ── os_executor / uia_executor (real OS-level execution layer) ───────────────
 try:
-    from core.os_executor import (
+    from core.os_utils.os_executor import (
         OSExecutor, assert_window_focused,
         safe_drag, safe_click, safe_hotkey, safe_type, safe_type_clipboard,
         safe_press, safe_hold, safe_move, safe_scroll,
         release_all_modifiers, ActionVerifier, FocusLostError, DPI_SCALE,
         get_audit_log, _CHAOS_HOOKS,
     )
-    from core.uia_executor import UIAExecutor
+    from core.os_utils.uia_executor import UIAExecutor
     OS_EXECUTOR_OK = True
 except ImportError:
     OS_EXECUTOR_OK = False
@@ -658,7 +658,7 @@ class ApplicationAgent(BaseAgent):
                                 replan_context: str = "") -> Dict:
         """Ask LLM for the single best next action given current screen state."""
         try:
-            from core.llm_router import get_router
+            from core.orchestration.llm_router import get_router
             router = get_router()
             sw, sh = pyautogui.size()
             recent = steps_done[-6:]

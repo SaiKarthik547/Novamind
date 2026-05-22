@@ -33,7 +33,7 @@ class RuntimeStore:
         )
 
     def get_session_log_path(self) -> Path:
-        return Path(self.event_recorder.log_path)
+        return Path(self.event_recorder.log_file)
 
     async def trigger_snapshot(self, sequence_id: int):
         """Async: delegates to the barrier-protected StateSnapshotManager."""

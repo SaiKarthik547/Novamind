@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from core.orchestration.task_parser import TaskParser, TaskPlan, TaskStep, RiskLevel
 from core.orchestration.llm_router import get_router
-from core.parallel_engine import ParallelExecutionEngine, TaskNode, TaskStatus
+from core.orchestration.parallel_engine import ParallelExecutionEngine, TaskNode, TaskStatus
 
 from core.runtime.agent_context import AgentContext
 from core.runtime.kernel_supervisor import KernelSupervisor
@@ -169,7 +169,7 @@ class Brain:
         self.recovery_agent = recovery_agent
 
         # Phase 9 Kernel Supervisor (Replaces direct transaction/sandbox ownership)
-        self.kernel_supervisor = KernelSupervisor()
+        self.kernel_supervisor = KernelSupervisor(event_bus=self.event_bus)
 
         self._tasks:     Dict[str, TaskExecution] = {}
         self._lock       = threading.Lock()
@@ -307,7 +307,7 @@ class Brain:
 
         if self.state_manager:
             try:
-                from core.state_manager import TaskStatus
+                from core.state.state_manager import TaskStatus
                 status_map = {
                     ExecutionStatus.PENDING:   TaskStatus.PENDING,
                     ExecutionStatus.RUNNING:   TaskStatus.RUNNING,

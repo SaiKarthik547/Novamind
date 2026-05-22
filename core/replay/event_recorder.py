@@ -75,7 +75,7 @@ class EventRecorder:
     def _write_to_disk(self, event: dict):
         """Blocking disk write. Opens in append mode."""
         try:
-            from core.canonical import canonical_dumps
+            from core.foundation.canonical import canonical_dumps
             with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(canonical_dumps(event) + "\n")
                 f.flush()
