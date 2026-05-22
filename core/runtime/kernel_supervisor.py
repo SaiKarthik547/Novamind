@@ -1,8 +1,8 @@
 import logging
 from typing import Dict, Optional
 
-from core.worker_runtime import WorkerSupervisor
-from core.worker_protocol import WorkerIdentity, WorkerState
+from core.runtime.worker_runtime import WorkerSupervisor
+from core.ipc.worker_protocol import WorkerIdentity, WorkerState
 from core.transaction.effect_wal import EffectWal
 from core.transaction.effect_reconciler import EffectReconciler
 from core.transaction.panic_manager import PanicManager, PanicLevel

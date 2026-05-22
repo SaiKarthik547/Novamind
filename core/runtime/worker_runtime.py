@@ -6,7 +6,7 @@ import uuid
 import json
 from typing import Dict, Optional, Callable
 
-from core.worker_protocol import WorkerState, FrameType, WorkerIdentity, IpcFrame
+from core.ipc.worker_protocol import WorkerState, FrameType, WorkerIdentity, IpcFrame
 
 logger = logging.getLogger("WorkerSupervisor")
 

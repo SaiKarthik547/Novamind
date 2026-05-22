@@ -39,7 +39,7 @@ sys.stderr = _APPLY_UTF8[
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from core.log_manager import setup_structured_logging, get_logger
+from core.os_utils.log_manager import setup_structured_logging, get_logger
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 setup_structured_logging(str(runtime_path("logs")))

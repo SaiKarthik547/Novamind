@@ -1,9 +1,9 @@
 import logging
 from typing import Any, Dict, List
 from dataclasses import dataclass, field
-from core.capability_broker import ExecutionLease
+from core.runtime.capability_broker import ExecutionLease
 from core.transaction.transaction_manager import TransactionManager, TransactionType
-from core.execution_sandbox import ExecutionSandbox
+from core.runtime.execution_sandbox import ExecutionSandbox
 
 logger = logging.getLogger("AgentContext")
 

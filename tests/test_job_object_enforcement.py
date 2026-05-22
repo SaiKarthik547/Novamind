@@ -1,7 +1,7 @@
 import pytest
 import sys
 import psutil
-from core.windows_job_objects import WindowsJobObject
+from core.os_utils.windows_job_objects import WindowsJobObject
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Job Objects require Windows")
 def test_job_object_assignment():

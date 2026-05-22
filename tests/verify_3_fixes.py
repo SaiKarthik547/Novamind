@@ -9,7 +9,7 @@ assert 'disable_startup' in agent.handlers, 'MISSING handler key'
 print('Fix 1 OK: disable_startup_item method exists and is wired in handlers')
 
 # Fix 2: r.error or '' guard
-from core.brain import Brain, StepResult, ExecutionStatus
+from core.runtime.brain import Brain, StepResult, ExecutionStatus
 r = StepResult(step_number=1, status=ExecutionStatus.SUCCESS, agent='x', action='y', error=None)
 val = (r.error or '')[:200]
 print(f'Fix 2 OK: (None or "")[:200] = "{val}"')

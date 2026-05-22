@@ -16,8 +16,8 @@ import time
 import json
 from typing import Any, Callable, Dict, List, Optional
 from pydantic import BaseModel, Field
-from core.agent_context import AgentContext
-from core.syscall_gate import SyscallGate
+from core.runtime.agent_context import AgentContext
+from core.runtime.syscall_gate import SyscallGate
 
 # Phase 7 synchronization primitives — imported lazily to avoid circular
 # imports during early boot (main.py registers agents before the loop starts).

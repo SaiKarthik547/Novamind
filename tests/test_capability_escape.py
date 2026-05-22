@@ -1,5 +1,5 @@
 import pytest
-from core.syscall_gate import SyscallGate, CapabilityViolation
+from core.runtime.syscall_gate import SyscallGate, CapabilityViolation
 
 class MockAgentWithSubprocess:
     def __init__(self):

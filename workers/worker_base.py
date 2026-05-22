@@ -8,7 +8,7 @@ from typing import Dict, Any
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from core.worker_protocol import FrameType, WorkerIdentity, IpcFrame
+from core.ipc.worker_protocol import FrameType, WorkerIdentity, IpcFrame
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("WorkerBase")

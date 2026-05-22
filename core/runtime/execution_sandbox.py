@@ -2,8 +2,8 @@ import logging
 import os
 import subprocess
 from typing import Any, Dict, List, Optional
-from core.capability_broker import CapabilityBroker, Capability, ExecutionLease
-from core.resource_governor import ResourceGovernor
+from core.runtime.capability_broker import CapabilityBroker, Capability, ExecutionLease
+from core.runtime.resource_governor import ResourceGovernor
 
 logger = logging.getLogger("ExecutionSandbox")
 

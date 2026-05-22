@@ -3,7 +3,7 @@ sys.path.insert(0, ".")
 
 from shared.protocol.events import validate_message, PROTOCOL_VERSION
 from core.foundation.canonical import canonical_dumps, state_hash
-from core.runtime_auditor import RuntimeAuditor
+from core.runtime.runtime_auditor import RuntimeAuditor
 
 # Test 1: canonical hash is deterministic
 obj = {"b": 2, "a": 1, "ts": 1234567890.123456}

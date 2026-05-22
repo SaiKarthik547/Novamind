@@ -35,7 +35,24 @@ MIGRATIONS = {
     'core.event_recorder': 'core.replay.event_recorder',
     'core.replay_cursor': 'core.replay.replay_cursor',
     
-    'core.synchronization': 'core.sync.synchronization'
+    'core.synchronization': 'core.sync.synchronization',
+    
+    # Stage D
+    'core.brain': 'core.runtime.brain',
+    'core.capability_broker': 'core.runtime.capability_broker',
+    'core.execution_sandbox': 'core.runtime.execution_sandbox',
+    'core.resource_governor': 'core.runtime.resource_governor',
+    'core.runtime_auditor': 'core.runtime.runtime_auditor',
+    'core.runtime_supervisor': 'core.runtime.runtime_supervisor',
+    'core.syscall_gate': 'core.runtime.syscall_gate',
+    'core.worker_runtime': 'core.runtime.worker_runtime',
+    'core.agent_context': 'core.runtime.agent_context',
+    'core.kernel_supervisor': 'core.runtime.kernel_supervisor',
+    'core.worker_protocol': 'core.ipc.worker_protocol',
+    'core.windows_job_objects': 'core.os_utils.windows_job_objects',
+    'core.log_manager': 'core.os_utils.log_manager',
+    'core.tool_result': 'core.contracts.tool_result',
+    'core.version': 'core.foundation.version'
 }
 
 def update_imports(filepath):

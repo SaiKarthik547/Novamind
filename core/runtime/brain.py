@@ -23,8 +23,8 @@ from core.orchestration.task_parser import TaskParser, TaskPlan, TaskStep, RiskL
 from core.orchestration.llm_router import get_router
 from core.parallel_engine import ParallelExecutionEngine, TaskNode, TaskStatus
 
-from core.agent_context import AgentContext
-from core.kernel_supervisor import KernelSupervisor
+from core.runtime.agent_context import AgentContext
+from core.runtime.kernel_supervisor import KernelSupervisor
 
 logger = logging.getLogger("Brain")
 

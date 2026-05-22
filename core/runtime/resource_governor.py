@@ -2,7 +2,7 @@ import logging
 import psutil
 import time
 from typing import Dict, List, Optional
-from core.capability_broker import ResourceBudget
+from core.runtime.capability_broker import ResourceBudget
 
 logger = logging.getLogger("ResourceGovernor")
 

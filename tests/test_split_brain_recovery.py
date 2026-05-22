@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import MagicMock
 
 from core.replay.divergence_analyzer import DivergenceAnalyzer
-from core.runtime_supervisor import RuntimeSupervisor, SupervisorMode
+from core.runtime.runtime_supervisor import RuntimeSupervisor, SupervisorMode
 
 @pytest.fixture
 def mock_event_bus():
