@@ -163,6 +163,9 @@ class NovaMindApp:
 
     def initialize(self) -> bool:
         logger.info("Initialising NovaMind v3 ...")
+        from core.bootstrap.runtime_lifecycle import RuntimeLifecycle, RuntimeState
+        self.lifecycle = RuntimeLifecycle()
+        self.lifecycle.transition(RuntimeState.PRECHECK, "Dependencies verified")
         load_env_keys()
 
         if not self.deps.get("requests"):
@@ -181,6 +184,7 @@ class NovaMindApp:
         logger.info(f"  {status['active_providers']} active provider(s)")
 
         # Session Discovery & Recovery Boot
+        self.lifecycle.transition(RuntimeState.RECOVER, "Initializing recovery sequence")
         logger.info("-> Session Registry & Recovery")
         from core.foundation.session_registry import SessionRegistry
         self.session_registry = SessionRegistry()
@@ -207,11 +211,12 @@ class NovaMindApp:
             logger.warning(f"  Memory init failed: {exc}")
 
         # EventBus
+        self.lifecycle.transition(RuntimeState.VERIFY_WAL, "Checking EventRecorder and EventBus")
         logger.info("-> EventBus")
         try:
             from core.orchestration.event_bus import get_event_bus
             from core.replay.event_recorder import EventRecorder
-            from core.runtime.runtime_supervisor import RuntimeSupervisor
+            from core.orchestration.kernel_supervisor import KernelSupervisor
             from core.runtime.runtime_auditor import RuntimeAuditor
             
             self.event_bus = get_event_bus(memory_system=self.memory)
@@ -284,6 +289,7 @@ class NovaMindApp:
             logger.warning("  Pillow not installed -- vision disabled")
 
         # Agents
+        self.lifecycle.transition(RuntimeState.VERIFY_WORKERS, "Initializing worker agents")
         logger.info("-> Agents")
         self._init_agents()
 
@@ -341,6 +347,7 @@ class NovaMindApp:
             self._wire_event_subscriptions()
 
         # Godot Bridge & Task Manager
+        self.lifecycle.transition(RuntimeState.START_IPC, "Initializing Bridge Server IPC")
         logger.info("-> Ecosystem Components")
         try:
             from core.orchestration.task_manager import TaskManager
@@ -417,6 +424,7 @@ class NovaMindApp:
             logger.warning(f"  Bridge init failed: {exc}")
 
         # Scheduler
+        self.lifecycle.transition(RuntimeState.START_SCHEDULER, "Initializing Task Scheduler")
         logger.info("-> Task Scheduler")
         try:
             from core.orchestration.scheduler import TaskScheduler
@@ -512,6 +520,7 @@ class NovaMindApp:
                 agent_registry=self.agents
             )
 
+        self.lifecycle.transition(RuntimeState.READY, "Runtime fully initialized")
         return True
 
     # ──────────────────────────────────────────────────────────────────────────
@@ -700,6 +709,9 @@ class NovaMindApp:
 
     def stop(self) -> None:
         logger.info("Shutting down ...")
+        if hasattr(self, 'lifecycle'):
+            from core.bootstrap.runtime_lifecycle import RuntimeState
+            self.lifecycle.transition(RuntimeState.QUIESCING, "Shutdown requested")
         self.running = False
         if self.event_bus:
             self.event_bus.emit_sync("session_ended", {
@@ -708,14 +720,15 @@ class NovaMindApp:
         if self.scheduler:
             self.scheduler.stop()
         if self.bridge_server:
-            # We cancel the asyncio loop via thread-safe call if needed, 
-            # but daemon thread will kill it cleanly on exit.
             pass
         if self.brain:
             self.brain.stop()
         if self.memory:
             self.memory.end_session()
             self.memory.close()
+        if hasattr(self, 'lifecycle'):
+            from core.bootstrap.runtime_lifecycle import RuntimeState
+            self.lifecycle.transition(RuntimeState.HALT, "Shutdown complete")
         logger.info("Done.")
 
     def run_cli_task(self, task: str) -> None:

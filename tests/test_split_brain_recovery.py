@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import MagicMock
 
 from core.replay.divergence_analyzer import DivergenceAnalyzer
-from core.runtime.runtime_supervisor import RuntimeSupervisor, SupervisorMode
+from core.orchestration.kernel_supervisor import KernelSupervisor
 
 @pytest.fixture
 def mock_event_bus():
@@ -35,7 +35,17 @@ def test_supervisor_degraded_transition(mock_event_bus, mock_recorder):
     Simulates the auditor reporting a divergence violation to the supervisor.
     Asserts the supervisor formally transitions to DEGRADED and issues STATE_DIVERGENCE.
     """
-    supervisor = RuntimeSupervisor(mock_event_bus, mock_recorder)
+    from core.bootstrap.runtime_lifecycle import RuntimeLifecycle, RuntimeState
+    mock_lifecycle = RuntimeLifecycle()
+    mock_lifecycle.transition(RuntimeState.PRECHECK)
+    mock_lifecycle.transition(RuntimeState.RECOVER)
+    mock_lifecycle.transition(RuntimeState.VERIFY_WAL)
+    mock_lifecycle.transition(RuntimeState.VERIFY_WORKERS)
+    mock_lifecycle.transition(RuntimeState.START_IPC)
+    mock_lifecycle.transition(RuntimeState.START_SCHEDULER)
+    mock_lifecycle.transition(RuntimeState.READY)
+    
+    supervisor = KernelSupervisor(mock_lifecycle, mock_event_bus, mock_recorder)
     
     violation = {
         "violation_number": 42,
@@ -47,7 +57,7 @@ def test_supervisor_degraded_transition(mock_event_bus, mock_recorder):
     supervisor.on_violation(violation)
     
     # Assert FSM handled it correctly
-    assert supervisor.fsm.mode == SupervisorMode.DEGRADED
+    assert supervisor.lifecycle.current_state == RuntimeState.DEGRADED
     
     # Assert policy engine pushed STATE_DIVERGENCE
     published_events = [call[0][0]["type"] for call in mock_event_bus.publish.call_args_list]

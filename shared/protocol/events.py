@@ -12,54 +12,19 @@ Ordering policy (from user feedback):
 """
 
 import logging
+from core.contracts.runtime_events import (
+    PROTOCOL_VERSION,
+    MessageType,
+    EventType,
+)
 
 logger = logging.getLogger(__name__)
-
-PROTOCOL_VERSION = "1.0.0"
-
-
-class MessageType:
-    COMMAND      = "COMMAND"
-    EVENT        = "EVENT"
-    STATE_UPDATE = "STATE_UPDATE"
-    ERROR        = "ERROR"
-    HEARTBEAT    = "HEARTBEAT"
-    SYSTEM       = "SYSTEM"
-
-    _ALL = {COMMAND, EVENT, STATE_UPDATE, ERROR, HEARTBEAT, SYSTEM}
-
-
-class EventType:
-    USER_COMMAND_ISSUED    = "USER_COMMAND_ISSUED"
-    AGENT_TOOL_CALL        = "AGENT_TOOL_CALL"
-    AGENT_TASK_STARTED     = "AGENT_TASK_STARTED"
-    AGENT_TASK_COMPLETED   = "AGENT_TASK_COMPLETED"
-    AGENT_TASK_FAILED      = "AGENT_TASK_FAILED"
-    AGENT_LIFECYCLE_CREATED   = "AGENT_LIFECYCLE_CREATED"
-    AGENT_LIFECYCLE_DESTROYED = "AGENT_LIFECYCLE_DESTROYED"
-    SYSTEM_HEARTBEAT       = "SYSTEM_HEARTBEAT"
-    SCENE_LOAD             = "SCENE_LOAD"
-    INVARIANT_VIOLATION    = "INVARIANT_VIOLATION"
-    STATE_DIVERGENCE       = "STATE_DIVERGENCE"
-    RECONCILIATION_REQUEST = "RECONCILIATION_REQUEST"
-    RECONCILIATION_RESPONSE= "RECONCILIATION_RESPONSE"
-    REPLAY_SYNC            = "REPLAY_SYNC"
-
-    _ALL = {
-        USER_COMMAND_ISSUED, AGENT_TOOL_CALL, AGENT_TASK_STARTED,
-        AGENT_TASK_COMPLETED, AGENT_TASK_FAILED, AGENT_LIFECYCLE_CREATED,
-        AGENT_LIFECYCLE_DESTROYED, SYSTEM_HEARTBEAT, SCENE_LOAD,
-        INVARIANT_VIOLATION, STATE_DIVERGENCE, RECONCILIATION_REQUEST,
-        RECONCILIATION_RESPONSE, REPLAY_SYNC
-    }
-
 
 _REQUIRED_KEYS = frozenset({
     "protocol_version", "message_type", "event_type",
     "sequence_id", "causal_parent_id",
     "payload", "timestamp", "msg_id", "correlation_id",
 })
-
 
 def validate_message(msg: dict) -> bool:
     """
