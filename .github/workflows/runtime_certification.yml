@@ -20,7 +20,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-asyncio websockets numexpr
+        pip install pytest pytest-asyncio websockets numexpr requests
 
     - name: Run Deterministic Validation Suite
       run: |
