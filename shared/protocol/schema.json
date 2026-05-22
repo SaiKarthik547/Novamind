@@ -1,45 +1,59 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "NovaMind Bridge Protocol",
-  "description": "Standardized schema for all WebSocket IPC between Python Ecosystem and Godot Client",
+  "description": "Standardized IPC schema between Python Ecosystem and Godot Client. Protocol version 1.0.0.",
   "type": "object",
   "properties": {
     "protocol_version": {
       "type": "string",
       "enum": ["1.0.0"],
-      "description": "The protocol version to ensure compatibility."
+      "description": "Protocol version. Mismatch causes immediate disconnect."
     },
     "message_type": {
       "type": "string",
       "enum": ["COMMAND", "EVENT", "STATE_UPDATE", "ERROR", "HEARTBEAT", "SYSTEM"],
-      "description": "The transport layer category of the message."
+      "description": "Transport layer category."
     },
     "event_type": {
       "type": "string",
       "enum": [
         "USER_COMMAND_ISSUED", "AGENT_TOOL_CALL", "AGENT_TASK_STARTED",
         "AGENT_TASK_COMPLETED", "AGENT_TASK_FAILED", "AGENT_LIFECYCLE_CREATED",
-        "AGENT_LIFECYCLE_DESTROYED", "SYSTEM_HEARTBEAT", "SCENE_LOAD"
+        "AGENT_LIFECYCLE_DESTROYED", "SYSTEM_HEARTBEAT", "SCENE_LOAD",
+        "INVARIANT_VIOLATION"
       ],
-      "description": "The specific semantic event type."
+      "description": "Semantic event type. Strict enum — unknown values are rejected."
+    },
+    "sequence_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonically increasing transport-layer sequence counter per connection. Used for ordering diagnostics and replay chronology. NOT a semantic causal chain — gaps trigger reconciliation, not hard disconnect in production mode."
+    },
+    "causal_parent_id": {
+      "type": ["string", "null"],
+      "description": "msg_id of the event that causally produced this event. Null for root events (user commands). Used for semantic dependency tracking, replay validation, and invariant enforcement."
     },
     "payload": {
       "type": "object",
-      "description": "Arbitrary data associated with the action.",
+      "description": "Arbitrary data.",
       "additionalProperties": true
     },
     "timestamp": {
       "type": "number",
-      "description": "Float timestamp of when the message was dispatched."
+      "description": "UNIX float timestamp at dispatch time."
     },
     "msg_id": {
       "type": "string",
-      "description": "UUID string for message tracing and idempotency."
+      "description": "Globally unique UUID per message. Idempotency key — duplicate msg_id must be discarded silently."
     },
     "correlation_id": {
       "type": "string",
-      "description": "UUID string tying a sequence of distributed events together."
+      "description": "UUID shared across a causal event chain (User Command → Task → Tool Call → Visualization)."
     }
   },
-  "required": ["protocol_version", "message_type", "event_type", "payload", "timestamp", "msg_id", "correlation_id"]
+  "required": [
+    "protocol_version", "message_type", "event_type",
+    "sequence_id", "causal_parent_id",
+    "payload", "timestamp", "msg_id", "correlation_id"
+  ]
 }

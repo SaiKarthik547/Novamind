@@ -151,9 +151,11 @@ class NovaMindApp:
         self.agent_registry_valid = False
 
         # Godot Ecosystem Components
-        self.task_manager   = None
-        self.bridge_server  = None
-        self._bridge_thread = None
+        self.task_manager    = None
+        self.bridge_server   = None
+        self._bridge_thread  = None
+        self.event_recorder  = None
+        self.runtime_auditor = None
 
         # Optional UI
         self.ui   = None
@@ -168,7 +170,24 @@ class NovaMindApp:
 
         # Initialize Core Infrastructure
         from core.event_recorder import EventRecorder
+        from core.runtime_auditor import RuntimeAuditor
         self.event_recorder = EventRecorder()
+
+        # Supervisor policy: log violations and forward to EventBus if available
+        def _supervisor(violation: dict):
+            logger.critical(
+                f"[Supervisor] INVARIANT VIOLATION #{violation['violation_number']} "
+                f"[{violation['code']}]: {violation['message']}"
+            )
+            if self.event_recorder:
+                self.event_recorder.log_event(
+                    event_type="INVARIANT_VIOLATION",
+                    source_runtime="Python:RuntimeAuditor",
+                    severity="CRITICAL",
+                    payload=violation,
+                )
+
+        self.runtime_auditor = RuntimeAuditor(supervisor_callback=_supervisor)
 
         # LLM Router
         logger.info("-> LLM Router")
@@ -206,7 +225,14 @@ class NovaMindApp:
                 )
             
             self.event_bus.subscribe("*", _log_event_bus)
-            logger.info("  EventBus ready and wired to EventRecorder")
+
+            # Wire RuntimeAuditor to EventBus (semantic invariant checking)
+            def _audit_event(event: dict):
+                if self.runtime_auditor:
+                    self.runtime_auditor.on_event(event)
+            self.event_bus.subscribe("*", _audit_event)
+
+            logger.info("  EventBus ready — wired to EventRecorder + RuntimeAuditor")
         except Exception as exc:
             logger.warning(f"  EventBus init failed: {exc}")
 
@@ -357,14 +383,16 @@ class NovaMindApp:
                 self.event_bus.subscribe_many(events_to_forward, _forward_to_godot)
                 logger.info("  EventBus wired to BridgeServer (Threadsafe IPC)")
                 
-            # 4. Wire Authoritative Heartbeat Reconciliation
+            # 4. Wire Authoritative Heartbeat Reconciliation + Auditor Desync Check
             if self.task_manager and self.bridge_server:
                 def _get_authoritative_state():
-                    # Return list of active task/agent IDs so Godot can cull orphaned holograms
                     active_tasks = []
                     for t_id, task in self.task_manager.tasks.items():
                         if task.status in ["running", "pending"]:
                             active_tasks.append(t_id)
+                    # Cross-check with RuntimeAuditor's internal model
+                    if self.runtime_auditor:
+                        self.runtime_auditor.validate_heartbeat(active_tasks)
                     return {"active_tasks": active_tasks}
                 self.bridge_server.heartbeat_callback = _get_authoritative_state
             
