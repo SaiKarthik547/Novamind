@@ -251,9 +251,16 @@ class NovaMindscape:
         q = getattr(self, "_evt_queue", None)
         if text and q:
             q.put({"type": "task", "text": text})
+            if hasattr(self, "_task_bg"):
+                self._task_bg.color = color.rgba(0, 255, 0, 100)
+                invoke(setattr, self._task_bg, 'color', color.rgba(0, 0, 0, 200), delay=0.5)
+
         self._task_input.text = ""
         self._task_input.active = False
         self._task_input.visible = False
+        if hasattr(self, "_task_bg"):
+            self._task_bg.visible = False
+        mouse.locked = True
 
     def update_tasks(self, tasks: List[Dict]):
         self.update_tasks(tasks)
@@ -386,15 +393,56 @@ class NovaMindscape:
     # ── Scene Construction ───────────────────────────────────────────────────
 
     def _build_scene(self, app):
+        from ursina import load_texture
+        self.tex_concrete = load_texture('assets/textures/concrete.png') or 'white_cube'
+        self.tex_glass = load_texture('assets/textures/glass.png') or 'white_cube'
+        self.tex_metal = load_texture('assets/textures/metal.png') or 'white_cube'
+        self.tex_asphalt = load_texture('assets/textures/asphalt.png') or 'white_cube'
+        
+        self.mesh_concrete = Entity(texture=self.tex_concrete)
+        self.mesh_glass = Entity(texture=self.tex_glass)
+        self.mesh_metal = Entity(texture=self.tex_metal)
+        self.mesh_asphalt = Entity(texture=self.tex_asphalt)
+
         self._setup_sky()
         self._setup_lighting()
-        self._build_terrain()
-        self._build_roads()
-        self._build_buildings()
-        self._build_ai_tower()
-        self._build_elevated_highway()
-        self._build_monorail()
-        self._build_street_details()
+        # Monkeypatch Entity to automatically assign static cubes to combined meshes
+        original_init = Entity.__init__
+        
+        def patched_init(self_ent, **kwargs):
+            if kwargs.get('model') == 'cube' and 'parent' not in kwargs:
+                # Default to concrete
+                parent_mesh = self.mesh_concrete
+                c = kwargs.get('color')
+                if c:
+                    # Heuristics based on color
+                    if c[0] < 0.1 and c[1] < 0.1 and c[2] < 0.1:  # Dark / Roads
+                        parent_mesh = self.mesh_asphalt
+                    elif c[0] > 0.5 and c[1] > 0.5 and c[2] < 0.5: # Gold / Yellow
+                        parent_mesh = self.mesh_glass
+                    elif c[2] > 0.5 and c[0] < 0.3:               # Blue / Neon
+                        parent_mesh = self.mesh_glass
+                    else:
+                        import random
+                        parent_mesh = random.choice([self.mesh_concrete, self.mesh_metal])
+                
+                kwargs['parent'] = parent_mesh
+                kwargs['add_to_scene_entities'] = False
+            original_init(self_ent, **kwargs)
+            
+        Entity.__init__ = patched_init
+
+        try:
+            self._build_terrain()
+            self._build_roads()
+            self._build_buildings()
+            self._build_ai_tower()
+            self._build_elevated_highway()
+            self._build_monorail()
+            self._build_street_details()
+        finally:
+            # Restore original init
+            Entity.__init__ = original_init
         if self.config.enable_rain:
             self._spawn_rain()
         if self.config.enable_npcs:
@@ -404,6 +452,13 @@ class NovaMindscape:
         self._spawn_data_shards()
         self._build_hud()
         self._build_minimap()
+        
+        # Combine static geometry for massive FPS boost
+        self.mesh_concrete.combine(auto_destroy=True)
+        self.mesh_glass.combine(auto_destroy=True)
+        self.mesh_metal.combine(auto_destroy=True)
+        self.mesh_asphalt.combine(auto_destroy=True)
+        
         self._setup_player()
         self._cinematic_intro()
 
@@ -1332,12 +1387,21 @@ class NovaMindscape:
         self._hud_status.text = ""
 
         #  In-game Task Input Field (hidden by default, toggle with Tab) 
+        self._task_bg = Entity(
+            parent=camera.ui,
+            model="quad",
+            scale=(2, 2),
+            color=color.rgba(0, 0, 0, 200),
+            z=1,
+            visible=False
+        )
         self._task_input = InputField(
-            y=-0.45,
-            scale=(0.8, 0.05),
+            y=0,
+            scale=(0.8, 0.1),
             active=False,
             visible=False,
-            parent=ui,
+            parent=camera.ui,
+            text_scale=2
         )
         self._task_input.on_submit = self._on_task_submit
 
@@ -1534,11 +1598,15 @@ class NovaMindscape:
         if key == 'tab':
             if hasattr(self, '_task_input'):
                 self._task_input.visible = not self._task_input.visible
+                if hasattr(self, '_task_bg'):
+                    self._task_bg.visible = self._task_input.visible
                 if self._task_input.visible:
                     self._task_input.active = True
                     self._task_input.text = ""
+                    mouse.locked = False
                 else:
                     self._task_input.active = False
+                    mouse.locked = True
             return
             
         if hasattr(self, '_task_input') and self._task_input.active:
