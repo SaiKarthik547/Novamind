@@ -26,8 +26,8 @@ import uuid
 from pathlib import Path
 from typing import List, Dict, Any
 
-from core.synchronization import LogicalClock, EpochManager, SnapshotBarrier
-from core.causal_scheduler import CausalScheduler
+from core.sync.synchronization import LogicalClock, EpochManager, SnapshotBarrier
+from core.orchestration.causal_scheduler import CausalScheduler
 from core.foundation.canonical import state_hash
 
 

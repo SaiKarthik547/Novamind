@@ -28,9 +28,9 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Iterator, Optional, Dict, List
 
-from core.replay_cursor import ReplayCursor
+from core.replay.replay_cursor import ReplayCursor
 from core.foundation.canonical import state_hash
-from core.causal_scheduler import CausalScheduler, make_causal_scheduler
+from core.orchestration.causal_scheduler import CausalScheduler, make_causal_scheduler
 
 logger = logging.getLogger(__name__)
 

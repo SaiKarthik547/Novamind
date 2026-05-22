@@ -38,7 +38,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set
 
-from core.synchronization import get_runtime_clock, get_epoch_manager
+from core.sync.synchronization import get_runtime_clock, get_epoch_manager
 
 logger = logging.getLogger("causal_scheduler")
 

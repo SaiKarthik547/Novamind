@@ -1,7 +1,7 @@
 import pytest
 import os
-from core.effect_wal import EffectWal, WalState, WalCorruptionError
-from core.effect_reconciler import EffectReconciler, ReconciliationState
+from core.transaction.effect_wal import EffectWal, WalState, WalCorruptionError
+from core.transaction.effect_reconciler import EffectReconciler, ReconciliationState
 
 def test_wal_reconciliation_safe_replay():
     wal_path = "test_safe_replay.wal"

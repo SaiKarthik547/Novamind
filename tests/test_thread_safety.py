@@ -6,7 +6,7 @@ import uuid
 import websockets
 from concurrent.futures import ThreadPoolExecutor
 
-from core.bridge_server import BridgeServer
+from core.ipc.bridge_server import BridgeServer
 
 HOST = "127.0.0.1"
 PORT = 8766  # Use a different port to avoid conflict with daemon

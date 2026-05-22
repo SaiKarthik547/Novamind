@@ -17,8 +17,8 @@ import asyncio
 import pytest
 import uuid
 
-from core.synchronization import LogicalClock, EpochManager, SnapshotBarrier
-from core.causal_scheduler import CausalScheduler
+from core.sync.synchronization import LogicalClock, EpochManager, SnapshotBarrier
+from core.orchestration.causal_scheduler import CausalScheduler
 
 
 # ── 1. LogicalClock ───────────────────────────────────────────────────────────

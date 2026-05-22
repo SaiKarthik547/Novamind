@@ -13,7 +13,29 @@ MIGRATIONS = {
     'core.runtime_store': 'core.state.runtime_store',
     'core.snapshot_store': 'core.state.snapshot_store',
     'core.state_manager': 'core.state.state_manager',
-    'core.state_snapshot': 'core.state.state_snapshot'
+    'core.state_snapshot': 'core.state.state_snapshot',
+    
+    # Stage B
+    'core.ipc_serializer': 'core.ipc.ipc_serializer',
+    'core.ipc_transport': 'core.ipc.ipc_transport',
+    'core.bridge_server': 'core.ipc.bridge_server',
+    'core.effect_reconciler': 'core.transaction.effect_reconciler',
+    'core.effect_wal': 'core.transaction.effect_wal',
+    'core.panic_manager': 'core.transaction.panic_manager',
+    'core.transaction_manager': 'core.transaction.transaction_manager',
+    
+    # Stage C
+    'core.causal_scheduler': 'core.orchestration.causal_scheduler',
+    'core.llm_router': 'core.orchestration.llm_router',
+    'core.step_executor': 'core.orchestration.step_executor',
+    'core.task_manager': 'core.orchestration.task_manager',
+    'core.task_parser': 'core.orchestration.task_parser',
+    
+    'core.divergence_analyzer': 'core.replay.divergence_analyzer',
+    'core.event_recorder': 'core.replay.event_recorder',
+    'core.replay_cursor': 'core.replay.replay_cursor',
+    
+    'core.synchronization': 'core.sync.synchronization'
 }
 
 def update_imports(filepath):

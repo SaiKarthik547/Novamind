@@ -19,8 +19,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional
 
-from core.task_parser import TaskParser, TaskPlan, TaskStep, RiskLevel
-from core.llm_router import get_router
+from core.orchestration.task_parser import TaskParser, TaskPlan, TaskStep, RiskLevel
+from core.orchestration.llm_router import get_router
 from core.parallel_engine import ParallelExecutionEngine, TaskNode, TaskStatus
 
 from core.agent_context import AgentContext

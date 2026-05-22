@@ -9,7 +9,7 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
-from core.llm_router import get_router
+from core.orchestration.llm_router import get_router
 from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("VerifierAgent")

@@ -4,7 +4,7 @@ import queue
 from typing import Optional
 from io import BytesIO
 
-from core.ipc_serializer import IpcSerializer
+from core.ipc.ipc_serializer import IpcSerializer
 from core.worker_protocol import IpcFrame, FrameType, WorkerIdentity
 
 logger = logging.getLogger("IpcTransport")

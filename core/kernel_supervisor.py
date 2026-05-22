@@ -3,11 +3,11 @@ from typing import Dict, Optional
 
 from core.worker_runtime import WorkerSupervisor
 from core.worker_protocol import WorkerIdentity, WorkerState
-from core.effect_wal import EffectWal
-from core.effect_reconciler import EffectReconciler
-from core.panic_manager import PanicManager, PanicLevel
-from core.transaction_manager import TransactionManager
-from core.causal_scheduler import CausalScheduler
+from core.transaction.effect_wal import EffectWal
+from core.transaction.effect_reconciler import EffectReconciler
+from core.transaction.panic_manager import PanicManager, PanicLevel
+from core.transaction.transaction_manager import TransactionManager
+from core.orchestration.causal_scheduler import CausalScheduler
 
 logger = logging.getLogger("KernelSupervisor")
 

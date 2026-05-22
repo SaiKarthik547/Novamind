@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from enum import Enum
 
-from core.llm_router import get_router
+from core.orchestration.llm_router import get_router
 
 logger = logging.getLogger("TaskParser")
 

@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple, Generator
 
 from core.foundation.base_agent import BaseAgent
-from core.llm_router import get_router
+from core.orchestration.llm_router import get_router
 
 logger = logging.getLogger("CodeAgent")
 

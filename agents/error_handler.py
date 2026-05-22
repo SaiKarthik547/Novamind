@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.llm_router import get_router
+from core.orchestration.llm_router import get_router
 
 logger = logging.getLogger("ErrorHandler")
 

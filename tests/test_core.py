@@ -184,7 +184,7 @@ class TestTaskParserRouting:
     def test_draw_plan_uses_execute_paint_task(self):
         # Skip if LLM router requires an API key
         try:
-            from core.task_parser import TaskParser
+            from core.orchestration.task_parser import TaskParser
             parser = TaskParser()
             plan = parser.parse("draw a red car in paint")
             assert len(plan.steps) >= 1
@@ -197,20 +197,20 @@ class TestTaskParserRouting:
             pytest.skip(f"TaskParser requires LLM router: {exc}")
 
     def test_is_drawing_request_detection(self):
-        from core.task_parser import TaskParser
+        from core.orchestration.task_parser import TaskParser
         parser = TaskParser()
         assert parser._is_drawing_request("draw a car in paint") is True
         assert parser._is_drawing_request("open chrome") is False
         assert parser._is_drawing_request("list files") is False
 
     def test_color_extraction(self):
-        from core.task_parser import TaskParser
+        from core.orchestration.task_parser import TaskParser
         parser = TaskParser()
         _subject, color = parser._extract_drawing_details("draw a red sports car in ms paint")
         assert color == "red"
 
     def test_fallback_parse_does_not_crash(self):
-        from core.task_parser import TaskParser
+        from core.orchestration.task_parser import TaskParser
         parser = TaskParser()
         # _fallback_parse should always return a valid TaskPlan
         plan = parser._fallback_parse("do something weird")

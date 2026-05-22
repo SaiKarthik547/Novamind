@@ -2,7 +2,7 @@ import logging
 from enum import Enum
 from typing import Dict, List, Any
 
-from core.effect_wal import EffectWal, WalState
+from core.transaction.effect_wal import EffectWal, WalState
 
 logger = logging.getLogger("EffectReconciler")
 

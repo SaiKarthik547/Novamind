@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from core.event_recorder import EventRecorder
+from core.replay.event_recorder import EventRecorder
 from core.state.state_snapshot import StateSnapshotManager
 
 logger = logging.getLogger(__name__)
