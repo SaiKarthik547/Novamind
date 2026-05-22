@@ -39,33 +39,11 @@ sys.stderr = _APPLY_UTF8[
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from core.log_manager import setup_structured_logging, get_logger
+
 # ── Logging ──────────────────────────────────────────────────────────────────
-log_file = runtime_path("logs", f"novamind_{datetime.now().strftime('%Y%m%d')}.log")
-
-
-def _build_log_handlers() -> List[logging.Handler]:
-    handlers: List[logging.Handler] = [logging.StreamHandler(sys.stdout)]
-    try:
-        handlers.insert(
-            0,
-            logging.handlers.RotatingFileHandler(
-                log_file,
-                maxBytes=10 * 1024 * 1024,
-                backupCount=5,
-                encoding="utf-8",
-            ),
-        )
-    except OSError as exc:
-        sys.stderr.write(f"[NovaMind] file logging disabled: {exc}\n")
-    return handlers
-
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)-20s | %(levelname)-7s | %(message)s",
-    handlers=_build_log_handlers(),
-)
-logger = logging.getLogger("NovaMind")
+setup_structured_logging(str(runtime_path("logs")))
+logger = get_logger("NovaMind")
 
 __version__ = "3.0.0"
 
@@ -173,8 +151,12 @@ class NovaMindApp:
         self.recovery_agent = None
         self.agent_registry_valid = False
 
-        # Optional
-        self.game = None
+        # Godot Ecosystem Components
+        self.task_manager   = None
+        self.bridge_server  = None
+        self._bridge_thread = None
+
+        # Optional UI
         self.ui   = None
 
     def initialize(self) -> bool:
@@ -300,23 +282,47 @@ class NovaMindApp:
         if self.event_bus:
             self._wire_event_subscriptions()
 
-        # Game (optional)
-        def _init_game():
-            logger.info("  Nova Mindscape (game)")
-            try:
-                from game.nova_mindscape_launcher import GameProcessManager
-                from game.nova_mindscape import GameConfig
-                _cfg = GameConfig()
-                self.game = GameProcessManager(
-                    config_dict=_cfg.__dict__ if hasattr(_cfg, "__dict__") else {},
-                    task_callback=self._on_task_submitted,
-                )
-                logger.info("  Game ready (process manager)")
-            except Exception as exc:
-                logger.warning(f"  Game init failed: {exc}")
-
-        _check_game = {True: _init_game}
-        _check_game.get(bool(not self.headless and not self.no_game and self.deps.get("ursina")), lambda: None)()
+        # Godot Bridge & Task Manager
+        logger.info("-> Ecosystem Components")
+        try:
+            from core.task_manager import TaskManager
+            from core.bridge_server import BridgeServer
+            from security.permission_manager import PermissionManager
+            
+            self.task_manager = TaskManager()
+            self.bridge_server = BridgeServer()
+            # Replace basic security with PermissionManager for OS actions
+            self.os_permissions = PermissionManager()
+            
+            # Register mock bridge handler for testing Vertical Slice
+            async def on_godot_command(data):
+                action = data.get("action")
+                payload = data.get("payload", {})
+                logger.info(f"Godot Bridge Event Received: {action} - {payload}")
+                
+                if action == "user_command":
+                    text = payload.get("text", "").lower()
+                    if "workspace" in text or "vscode" in text:
+                        # 1. Queue Task
+                        async def open_workspace():
+                            # 2. Check Permission
+                            approved = await self.os_permissions.request_permission("open_process", "code .")
+                            if approved:
+                                await self.bridge_server.send_message("STATE_UPDATE", "hologram_status", {"message": "Permission Granted. Opening Workspace...", "color": "yellow"})
+                                # Launch VSCode asynchronously
+                                import asyncio
+                                proc = await asyncio.create_subprocess_shell("code .", cwd=os.path.dirname(os.path.abspath(__file__)))
+                                await proc.wait()
+                                await self.bridge_server.send_message("STATE_UPDATE", "hologram_status", {"message": "Workspace Active", "color": "green"})
+                            else:
+                                await self.bridge_server.send_message("STATE_UPDATE", "hologram_status", {"message": "Permission Denied by User", "color": "red"})
+                        
+                        self.task_manager.submit("Open Workspace", open_workspace)
+                        
+            self.bridge_server.register_handler("EVENT", on_godot_command)
+            logger.info("  Task Manager and Bridge Server ready")
+        except Exception as exc:
+            logger.warning(f"  Bridge init failed: {exc}")
 
         # Scheduler
         logger.info("-> Task Scheduler")
@@ -324,11 +330,6 @@ class NovaMindApp:
             from core.scheduler import TaskScheduler
             self.scheduler = TaskScheduler(brain=self.brain, memory=self.memory)
             self.scheduler.start()
-            if self.game:
-                game_ref = self.game
-                self.scheduler.register_callback(
-                    lambda tasks, g=game_ref: g.update_tasks(tasks)
-                )
             logger.info("  Scheduler ready")
         except Exception as exc:
             logger.warning(f"  Scheduler init failed: {exc}")
@@ -493,8 +494,6 @@ class NovaMindApp:
             try:
                 if self.ui and self.brain:
                     self.ui.update_task_list(self.brain.get_all_tasks())
-                if self.game and self.brain:
-                    self.game.update_task_display(self.brain.get_all_tasks())
                 time.sleep(2)
             except Exception as exc:
                 logger.debug(f"Status loop: {exc}")
@@ -506,7 +505,7 @@ class NovaMindApp:
 
     def run(self) -> None:
         self.running = True
-        logger.info("NovaMind running.")
+        logger.info("NovaMind Ecosystem running.")
 
         if self.event_bus:
             self.event_bus.emit_sync("session_started", {
@@ -518,28 +517,38 @@ class NovaMindApp:
             target=self._status_update_loop, daemon=True
         ).start()
 
-        if self.game and not self.headless:
-            self.game.start()
+        # Start asyncio bridge thread
+        if self.bridge_server:
+            import asyncio
+            def _run_bridge():
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
+                async def _start_all():
+                    if self.task_manager:
+                        self.task_manager.start()
+                    await self.bridge_server.start()
+                
+                try:
+                    loop.run_until_complete(_start_all())
+                    loop.run_forever()
+                except Exception as e:
+                    logger.error(f"Bridge Thread crashed: {e}")
+                finally:
+                    loop.run_until_complete(self.bridge_server.stop())
+                    loop.close()
+            
+            self._bridge_thread = threading.Thread(target=_run_bridge, daemon=True)
+            self._bridge_thread.start()
 
         if self.ui and not self.headless:
             self.ui.show()
             from PyQt6.QtWidgets import QApplication
             qt = QApplication.instance()
             if qt:
-                # Need to run event loop but we don't want to block the rest of the application
-                # Wait, if we use sys.exit(qt.exec()), the main thread blocks here forever!
-                # It's fine if game is not active, but if we change this, we just need to ensure it runs
                 sys.exit(qt.exec())
-        elif self.game and not self.headless:
-            logger.info("Game mode active. Press Ctrl+C in console to stop.")
-            try:
-                while self.running:
-                    time.sleep(1)
-            except KeyboardInterrupt:
-                self.stop()
-
         else:
-            logger.info("Headless mode active. Press Ctrl+C to stop.")
+            logger.info("Ecosystem Server active. Waiting for Godot Client connection... Press Ctrl+C to stop.")
             try:
                 while self.running:
                     time.sleep(1)
@@ -555,13 +564,15 @@ class NovaMindApp:
             })
         if self.scheduler:
             self.scheduler.stop()
+        if self.bridge_server:
+            # We cancel the asyncio loop via thread-safe call if needed, 
+            # but daemon thread will kill it cleanly on exit.
+            pass
         if self.brain:
             self.brain.stop()
         if self.memory:
             self.memory.end_session()
             self.memory.close()
-        if self.game:
-            self.game.stop()
         logger.info("Done.")
 
     def run_cli_task(self, task: str) -> None:
