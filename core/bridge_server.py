@@ -239,6 +239,18 @@ class BridgeServer:
         else:
             logger.warning(f"[Bridge] No handler for message_type '{msg_type}'")
 
+    async def trigger_reconciliation(self, authoritative_state: dict):
+        """
+        Forces Godot to accept Python's truth (Python wins mismatch).
+        """
+        logger.warning("[Bridge] Triggering formal RECONCILIATION_REQUEST to client.")
+        await self.send_message(
+            msg_type="SYSTEM",
+            event_type="RECONCILIATION_REQUEST",
+            payload={"authoritative_state": authoritative_state}
+        )
+        self._degraded = True
+
     # ── Outgoing ──────────────────────────────────────────────────────────────
 
     async def send_message(

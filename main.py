@@ -148,6 +148,7 @@ class NovaMindApp:
         self.state_manager  = None
         self.verifier       = None
         self.recovery_agent = None
+        self.supervisor     = None
         self.agent_registry_valid = False
 
         # Godot Ecosystem Components
@@ -170,24 +171,7 @@ class NovaMindApp:
 
         # Initialize Core Infrastructure
         from core.event_recorder import EventRecorder
-        from core.runtime_auditor import RuntimeAuditor
-        self.event_recorder = EventRecorder()
-
-        # Supervisor policy: log violations and forward to EventBus if available
-        def _supervisor(violation: dict):
-            logger.critical(
-                f"[Supervisor] INVARIANT VIOLATION #{violation['violation_number']} "
-                f"[{violation['code']}]: {violation['message']}"
-            )
-            if self.event_recorder:
-                self.event_recorder.log_event(
-                    event_type="INVARIANT_VIOLATION",
-                    source_runtime="Python:RuntimeAuditor",
-                    severity="CRITICAL",
-                    payload=violation,
-                )
-
-        self.runtime_auditor = RuntimeAuditor(supervisor_callback=_supervisor)
+        # Note: RuntimeAuditor and RuntimeSupervisor are now initialized after EventBus
 
         # LLM Router
         logger.info("-> LLM Router")
@@ -196,7 +180,22 @@ class NovaMindApp:
         status = router.get_status()
         logger.info(f"  {status['active_providers']} active provider(s)")
 
-        # Memory (must be first — EventBus persists to it)
+        # Session Discovery & Recovery Boot
+        logger.info("-> Session Registry & Recovery")
+        from core.session_registry import SessionRegistry
+        self.session_registry = SessionRegistry()
+        
+        last_session = self.session_registry.get_latest_session()
+        if last_session:
+            logger.info(f"  Discovered previous session: {last_session}")
+            # Recovery replay will happen after all components are loaded
+            self.recovery_session_id = last_session
+        else:
+            logger.info("  No previous session found. Starting fresh.")
+            self.recovery_session_id = None
+            
+        self.session_id = self.session_registry.create_new_session()
+        logger.info(f"  Active Session UUID: {self.session_id}")
         logger.info("-> Memory System")
         try:
             from memory.memory_system import MemorySystem
@@ -211,7 +210,24 @@ class NovaMindApp:
         logger.info("-> EventBus")
         try:
             from core.event_bus import get_event_bus
+            from core.event_recorder import EventRecorder
+            from core.runtime_supervisor import RuntimeSupervisor
+            from core.runtime_auditor import RuntimeAuditor
+            
             self.event_bus = get_event_bus(memory_system=self.memory)
+            
+            log_dir = Path("logs/session_events")
+            log_dir.mkdir(parents=True, exist_ok=True)
+            self.event_recorder = EventRecorder(log_path=str(log_dir / f"session_{self.session_id}.jsonl"))
+            
+            # Supervisor is the ultimate authority for Auditor violations
+            self.supervisor = RuntimeSupervisor(
+                event_bus=self.event_bus,
+                event_recorder=self.event_recorder
+            )
+            self.runtime_auditor = RuntimeAuditor(
+                supervisor_callback=self.supervisor.on_violation
+            )
             
             # Wire Event Recorder to EventBus (Full System Logging)
             def _log_event_bus(event: dict):
@@ -232,7 +248,7 @@ class NovaMindApp:
                     self.runtime_auditor.on_event(event)
             self.event_bus.subscribe("*", _audit_event)
 
-            logger.info("  EventBus ready — wired to EventRecorder + RuntimeAuditor")
+            logger.info("  EventBus ready — wired to EventRecorder, Supervisor, and RuntimeAuditor")
         except Exception as exc:
             logger.warning(f"  EventBus init failed: {exc}")
 
@@ -447,6 +463,55 @@ class NovaMindApp:
             f"Verifier={'[v]' if self.verifier else '[x]'}, "
             f"Recovery={'[v]' if self.recovery_agent else '[x]'}"
         )
+        # Recovery Boot
+        if self.recovery_session_id:
+            logger.info("-> Recovery Boot")
+            try:
+                from core.runtime_store import RuntimeStore
+                from core.replay_engine import ReplayEngine, ReplayMode
+                
+                self.runtime_store = RuntimeStore(
+                    session_id=self.recovery_session_id,
+                    event_bus=self.event_bus,
+                    task_manager=self.task_manager,
+                    bridge_server=self.bridge_server,
+                    agent_registry=self.agents
+                )
+                
+                # Load latest snapshot
+                snapshot = self.runtime_store.load_latest_snapshot()
+                if snapshot:
+                    logger.info(f"  Loaded snapshot from sequence {snapshot.get('sequence_id', 0)}")
+                else:
+                    logger.warning("  No valid snapshot found. Replaying from genesis.")
+                
+                # Replay deltas
+                engine = ReplayEngine(mode=ReplayMode.STRICT)
+                success = engine.execute_recovery(
+                    snapshot=snapshot,
+                    session_log=self.runtime_store.get_session_log_path(),
+                    event_bus=self.event_bus
+                )
+                
+                if success:
+                    logger.info("  Recovery Boot Complete. Runtime state restored.")
+                else:
+                    logger.critical("  Recovery Boot FAILED due to divergence.")
+                    # Force halt per phase 6 strict rules
+                    self.supervisor.fsm.transition("CRITICAL_CORRUPTION")
+            except Exception as exc:
+                logger.error(f"  Recovery boot failed: {exc}")
+        else:
+            # Active session store setup
+            from core.runtime_store import RuntimeStore
+            self.runtime_store = RuntimeStore(
+                session_id=self.session_id,
+                event_bus=self.event_bus,
+                task_manager=self.task_manager,
+                bridge_server=self.bridge_server,
+                agent_registry=self.agents
+            )
+
         return True
 
     # ──────────────────────────────────────────────────────────────────────────

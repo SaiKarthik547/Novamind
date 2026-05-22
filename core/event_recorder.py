@@ -8,11 +8,17 @@ import uuid
 logger = logging.getLogger(__name__)
 
 class EventRecorder:
-    def __init__(self, logs_dir: str = "logs/session_events"):
-        self.logs_dir = Path(logs_dir)
-        self.logs_dir.mkdir(parents=True, exist_ok=True)
-        self.session_id = str(uuid.uuid4())
-        self.log_file = self.logs_dir / f"session_{self.session_id}.jsonl"
+    def __init__(self, log_path: str = None, logs_dir: str = "logs/session_events"):
+        if log_path:
+            self.log_file = Path(log_path)
+            self.session_id = self.log_file.stem.replace("session_", "")
+        else:
+            self.logs_dir = Path(logs_dir)
+            self.logs_dir.mkdir(parents=True, exist_ok=True)
+            self.session_id = str(uuid.uuid4())
+            self.log_file = self.logs_dir / f"session_{self.session_id}.jsonl"
+        
+        self.log_file.parent.mkdir(parents=True, exist_ok=True)
         self._queue = asyncio.Queue()
         self._worker_task = None
 
@@ -69,7 +75,11 @@ class EventRecorder:
     def _write_to_disk(self, event: dict):
         """Blocking disk write. Opens in append mode."""
         try:
+            from core.canonical import canonical_dumps
             with open(self.log_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(event) + "\n")
+                f.write(canonical_dumps(event) + "\n")
+                f.flush()
+                import os
+                os.fsync(f.fileno())
         except Exception as e:
             logger.error(f"EventRecorder failed to write to disk: {e}")

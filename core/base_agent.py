@@ -7,9 +7,28 @@ Provides a universal capability registry (plugin model) so agents can
 communicate and execute actions without if/elif dispatch chains.
 """
 import logging
-from typing import Any, Callable, Dict
+import uuid
+import time
+from typing import Any, Callable, Dict, List
 
 logger = logging.getLogger("BaseAgent")
+
+class EffectJournal:
+    """
+    Isolates irreversible side-effects (e.g., file writes, OS commands).
+    Ensures that during a replay, identical commands don't re-execute but yield the logged outcome.
+    """
+    def __init__(self):
+        self.log: List[Dict[str, Any]] = []
+
+    def record_effect(self, action: str, parameters: dict, result: dict):
+        self.log.append({
+            "id": str(uuid.uuid4()),
+            "timestamp": time.time(),
+            "action": action,
+            "parameters": parameters,
+            "result": result
+        })
 
 class BaseAgent:
     """
@@ -25,6 +44,19 @@ class BaseAgent:
     def __init__(self) -> None:
         self.handlers: Dict[str, Callable] = {}
         self._action_log: list = []
+        self.effect_journal = EffectJournal()
+
+    def get_state(self) -> dict:
+        """Mandatory serialization contract for StateSnapshotManager."""
+        return {
+            "action_log": self._action_log,
+            "effect_journal": self.effect_journal.log
+        }
+
+    def set_state(self, state: dict):
+        """Restores state from a snapshot during recovery boot."""
+        self._action_log = state.get("action_log", [])
+        self.effect_journal.log = state.get("effect_journal", [])
 
     @classmethod
     def register_capability(cls, action_name: str, handler: Callable) -> None:
@@ -50,6 +82,11 @@ class BaseAgent:
         try:
             result = fn(**parameters)
             self._log(action, parameters, result.get("success", False))
+            
+            # If the handler explicitly tags side-effects, log them
+            if result.get("is_irreversible", False):
+                self.effect_journal.record_effect(action, parameters, result)
+                
             logger.debug(f"[BaseAgent] {action} -> success={result.get('success')}")
             return result
         except Exception as e:
