@@ -10,12 +10,19 @@ import ctypes
 import json
 import logging
 import os
+
+# --- Phase 10.5 Capability Shim ---
+import sys as _sys
+class _ModuleShim:
+    def __init__(self, mod_name): self._mod_name = mod_name
+    def __getattr__(self, name): return getattr(__import__(self._mod_name), name)
+subprocess = _ModuleShim('subprocess')
+shutil = _ModuleShim('shutil')
+socket = _ModuleShim('socket')
+# ----------------------------------
 import platform
 import re
-import shutil
 import signal
-import socket
-import subprocess
 import sys
 import tempfile
 import time

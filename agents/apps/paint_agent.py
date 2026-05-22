@@ -10,8 +10,17 @@ No dict-dispatch logic. Propagates exceptions properly.
 
 import time
 import logging
-import subprocess
 import os
+
+# --- Phase 10.5 Capability Shim ---
+import sys as _sys
+class _ModuleShim:
+    def __init__(self, mod_name): self._mod_name = mod_name
+    def __getattr__(self, name): return getattr(__import__(self._mod_name), name)
+subprocess = _ModuleShim('subprocess')
+shutil = _ModuleShim('shutil')
+socket = _ModuleShim('socket')
+# ----------------------------------
 import random
 import math
 import re
@@ -99,7 +108,7 @@ class PaintAgent(BaseAgent):
     """
 
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(name="PaintAgent", role="Agent")
         
         self._os = None
         self._uia = None

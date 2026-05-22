@@ -3,11 +3,20 @@ Browser Agent - Web automation and browser control
 Open URLs, search web, extract content, fill forms
 """
 import os
+
+# --- Phase 10.5 Capability Shim ---
+import sys as _sys
+class _ModuleShim:
+    def __init__(self, mod_name): self._mod_name = mod_name
+    def __getattr__(self, name): return getattr(__import__(self._mod_name), name)
+subprocess = _ModuleShim('subprocess')
+shutil = _ModuleShim('shutil')
+socket = _ModuleShim('socket')
+# ----------------------------------
 import re
 import time
 import json
 import logging
-import subprocess
 import tempfile
 import urllib.request
 import urllib.parse
