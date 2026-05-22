@@ -485,9 +485,9 @@ class NovaMindApp:
                 else:
                     logger.warning("  No valid snapshot found. Replaying from genesis.")
                 
-                # Replay deltas
+                # Replay deltas (sync wrapper — boot happens before the loop)
                 engine = ReplayEngine(mode=ReplayMode.STRICT)
-                success = engine.execute_recovery(
+                success = engine.execute_recovery_sync(
                     snapshot=snapshot,
                     session_log=self.runtime_store.get_session_log_path(),
                     event_bus=self.event_bus
