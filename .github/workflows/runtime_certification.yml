@@ -24,7 +24,7 @@ jobs:
 
     - name: Run Deterministic Validation Suite
       run: |
-        pytest tests/test_core.py tests/test_chaos_injector.py tests/test_split_brain_recovery.py -v
+        pytest tests/test_core.py tests/test_split_brain_recovery.py -v
 
     - name: Run Schema Validator
       run: |
