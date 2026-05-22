@@ -44,7 +44,9 @@ venv.bak/
 .novamind/memory.db*   # SQLite database and WAL files
 .novamind/logs/        # Runtime logs
 .novamind/trash/       # Auto-backup directory
-
+*.novamind
+.memory.db
+*.novamind/memory.db
 # ── IDE & EDITOR ─────────────────────────────────────────────────────────────
 .vscode/
 .idea/
