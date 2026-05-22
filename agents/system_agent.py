@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("SystemAgent")
 
@@ -115,7 +115,7 @@ class SystemAgent(BaseAgent):
     MAX_EXECUTION_TIME = 300
 
     def __init__(self, event_bus=None):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self.event_bus      = event_bus
         self.execution_log:     List[Dict] = []
         self.running_processes: Dict[int, subprocess.Popen] = {}

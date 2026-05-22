@@ -28,7 +28,7 @@ from typing import List, Dict, Any
 
 from core.synchronization import LogicalClock, EpochManager, SnapshotBarrier
 from core.causal_scheduler import CausalScheduler
-from core.canonical import state_hash
+from core.foundation.canonical import state_hash
 
 
 # ── Minimal Runtime Simulation ────────────────────────────────────────────────

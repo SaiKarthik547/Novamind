@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("NetworkAgent")
 
@@ -98,7 +98,7 @@ class NetworkAgent(BaseAgent):
                     8080, 8443, 9200, 27017]
 
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self._requests = self._try_import("requests")
         self._psutil   = self._try_import("psutil")
         self._scan_history: List[Dict] = []

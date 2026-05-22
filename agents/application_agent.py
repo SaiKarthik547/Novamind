@@ -28,8 +28,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from agents.apps.paint_agent import PaintAgent
-from core.base_agent import BaseAgent
-from core.perception import PerceptionEngine
+from core.foundation.base_agent import BaseAgent
+from core.os_utils.perception import PerceptionEngine
 
 logger = logging.getLogger("AppAgent")
 
@@ -171,7 +171,7 @@ class ApplicationAgent(BaseAgent):
     REPLAN_THRESHOLD = 2
 
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self._current_color: Tuple[int, int, int] = (0, 0, 0)
         self._lock = threading.Lock()
         self._last_screenshot: Optional[Any] = None   # PIL Image

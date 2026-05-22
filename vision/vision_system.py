@@ -13,7 +13,7 @@ import platform
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 
-from core.runtime_paths import ensure_runtime_dir
+from core.foundation.runtime_paths import ensure_runtime_dir
 
 logger = logging.getLogger("Vision")
 

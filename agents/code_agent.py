@@ -29,7 +29,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple, Generator
 
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 from core.llm_router import get_router
 
 logger = logging.getLogger("CodeAgent")
@@ -219,7 +219,7 @@ class CodeAgent(BaseAgent):
     EXEC_TIMEOUT = 60       # seconds default
 
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self.router            = get_router()
         self.execution_history: List[ExecutionResult]   = []
         self.refactor_history:  List[Dict]              = []

@@ -5,7 +5,7 @@ import hashlib
 from pathlib import Path
 from typing import Optional, List
 
-from core.canonical import canonical_dumps
+from core.foundation.canonical import canonical_dumps
 
 logger = logging.getLogger(__name__)
 

@@ -26,7 +26,7 @@ sys.modules.setdefault("PIL", MagicMock())
 sys.modules.setdefault("PIL.Image", MagicMock())
 sys.modules.setdefault("PIL.ImageGrab", MagicMock())
 
-from core.os_executor import (  # noqa: E402
+from core.os_utils.os_executor import (  # noqa: E402
     _CHAOS_HOOKS, FocusLostError, safe_hotkey, safe_click,
     safe_type, safe_type_clipboard, safe_hotkey,
     get_audit_log, assert_window_focused,

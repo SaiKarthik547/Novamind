@@ -4,8 +4,8 @@ import uuid
 import logging
 from typing import Dict, Any, Optional
 
-from core.snapshot_store import SnapshotStore
-from core.canonical import state_hash
+from core.state.snapshot_store import SnapshotStore
+from core.foundation.canonical import state_hash
 from core.synchronization import (
     get_snapshot_barrier, get_epoch_manager, get_runtime_clock, SnapshotBarrier, EpochManager
 )

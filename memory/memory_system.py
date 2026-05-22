@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from core.runtime_paths import runtime_path
+from core.foundation.runtime_paths import runtime_path
 
 logger = logging.getLogger("MemorySystem")
 

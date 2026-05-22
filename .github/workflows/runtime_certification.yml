@@ -8,7 +8,7 @@ on:
 
 jobs:
   certify-runtime:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v4
 
@@ -20,7 +20,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest pytest-asyncio websockets numexpr requests
+        pip install -r requirements.txt
 
     - name: Run Deterministic Validation Suite
       run: |
@@ -29,6 +29,10 @@ jobs:
     - name: Run Phase 7 Concurrency & Replay Tests
       run: |
         pytest tests/test_async_concurrency.py tests/test_replay_equivalence.py -v
+
+    - name: Run Phase 9 Kernel Tests
+      run: |
+        pytest tests/test_worker_crash_recovery.py tests/test_job_object_enforcement.py tests/test_capability_escape.py -v
 
     - name: Run Schema Validator
       run: |

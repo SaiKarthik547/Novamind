@@ -34,8 +34,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from core.base_agent import BaseAgent
-from core.runtime_paths import ensure_runtime_dir
+from core.foundation.base_agent import BaseAgent
+from core.foundation.runtime_paths import ensure_runtime_dir
 
 logger = logging.getLogger("FileAgent")
 
@@ -115,7 +115,7 @@ class FileAgent(BaseAgent):
     }
 
     def __init__(self, allowed_roots: List[str] = None, max_file_size: int = 500 * 1024 * 1024):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self.allowed_roots = [Path(p).resolve() for p in (allowed_roots or [])]
         self.max_file_size   = max_file_size  # 500 MB default
         self.op_log:         List[Dict] = []

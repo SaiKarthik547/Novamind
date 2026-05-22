@@ -14,7 +14,7 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("MemoryAgent")
 
@@ -45,7 +45,7 @@ class MemoryAgent(BaseAgent):
     })
 
     def __init__(self, memory_system=None, db_path: Optional[str] = None):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         # Accept an existing MemorySystem or build a fresh one
         if memory_system is not None:
             self.memory = memory_system

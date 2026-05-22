@@ -27,7 +27,7 @@ try:
 except ImportError:
     easyocr = None
 
-from core.uia_executor import (
+from core.os_utils.uia_executor import (
     UIAExecutor, UIElement, UIWindow,
     UIAError, UIAUnavailableError, ElementNotFoundError, WindowNotFoundError
 )

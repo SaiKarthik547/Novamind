@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "novamind"
+version = "0.1.0"
+description = "NovaMind Isolated Execution Platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "requests==2.34.2",
+    "httpx==0.27.0",
+    "cbor2==5.6.3",
+    "pytest==9.0.3",
+    "pytest-asyncio==1.3.0",
+    "pygetwindow==0.0.9",
+    "pyperclip==1.9.0",
+    "comtypes==1.4.1",
+    "pywin32==306"
+]
+
+[project.scripts]
+novamind = "main:main"
+novamind-worker = "workers.shell_worker:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "agents*", "ui*", "vision*", "workers*"]
+exclude = ["tests*", "test_env*"]

@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Iterator, Optional, Dict, List
 
 from core.replay_cursor import ReplayCursor
-from core.canonical import state_hash
+from core.foundation.canonical import state_hash
 from core.causal_scheduler import CausalScheduler, make_causal_scheduler
 
 logger = logging.getLogger(__name__)

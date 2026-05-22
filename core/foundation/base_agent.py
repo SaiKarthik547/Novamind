@@ -13,7 +13,11 @@ deterministically without relying on wall-clock timestamps.
 import logging
 import uuid
 import time
-from typing import Any, Callable, Dict, List
+import json
+from typing import Any, Callable, Dict, List, Optional
+from pydantic import BaseModel, Field
+from core.agent_context import AgentContext
+from core.syscall_gate import SyscallGate
 
 # Phase 7 synchronization primitives — imported lazily to avoid circular
 # imports during early boot (main.py registers agents before the loop starts).
@@ -67,10 +71,15 @@ class BaseAgent:
     # Plugin registry — agents can register capabilities at runtime
     _GLOBAL_REGISTRY: Dict[str, Callable] = {}
 
-    def __init__(self) -> None:
+    def __init__(self, name: str, role: str, context: Optional[AgentContext] = None):
+        super().__init__()
+        self.name = name
+        self.role = role
+        self.context = context
         self.handlers: Dict[str, Callable] = {}
         self._action_log: list = []
         self.effect_journal = EffectJournal()
+        SyscallGate.validate_agent_capabilities(self.__class__.__module__)
 
     def get_state(self) -> dict:
         """Mandatory serialization contract for StateSnapshotManager."""

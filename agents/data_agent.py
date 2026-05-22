@@ -21,7 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("DataAgent")
 import ast as _ast
@@ -94,7 +94,7 @@ class DataAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self._pd   = self._try_import("pandas")
         self._np   = self._try_import("numpy")
         self._plt  = self._try_import("matplotlib.pyplot")

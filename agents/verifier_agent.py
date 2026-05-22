@@ -10,7 +10,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 from core.llm_router import get_router
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("VerifierAgent")
 
@@ -73,7 +73,7 @@ class VerifierAgent(BaseAgent):
     CONFIDENCE_ESCALATE_THRESHOLD  = 0.4
 
     def __init__(self, memory_system=None, event_bus=None):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self.router = get_router()
         self.memory = memory_system
         self.event_bus = event_bus

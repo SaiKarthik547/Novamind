@@ -2,17 +2,26 @@
 # Install with: pip install -r requirements.txt
 
 # ── Core HTTP / LLM ──────────────────────────────────────
-requests
-httpx
+requests==2.34.2
+httpx==0.27.0
+
+# ── IPC & Serialization ──────────────────────────────────
+cbor2==5.6.3
+
+# ── Testing ──────────────────────────────────────────────
+pytest==9.0.3
+pytest-asyncio==1.3.0
 
 # ── GUI ──────────────────────────────────────────────────
 PyQt6
 
 # ── Desktop Automation (REQUIRED for MS Paint drawing) ───
 pyautogui
-pygetwindow        # Window focus / position detection
-pyperclip          # Clipboard read/write
-comtypes           # Windows UI Automation (UIA)  [win]
+pygetwindow==0.0.9        # Window focus / position detection
+pyperclip==1.9.0          # Clipboard read/write
+comtypes==1.4.1           # Windows UI Automation (UIA)  [win]
+pywin32==306              # Windows Job Objects & OS containment
+pydantic==2.13.4
 
 # ── Vision / OCR ─────────────────────────────────────────
 Pillow
@@ -28,7 +37,7 @@ pandas
 sentence-transformers
 
 # ── System Monitoring ────────────────────────────────────
-psutil
+psutil==5.9.8
 
 # ── Browser Automation ───────────────────────────────────
 playwright        # After install: playwright install chromium

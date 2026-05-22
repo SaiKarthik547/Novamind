@@ -10,7 +10,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Awaitable, Dict, List, Optional
 
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("ErrorRecoveryAgent")
 
@@ -272,7 +272,7 @@ class ErrorRecoveryAgent(BaseAgent):
     """
 
     def __init__(self, event_bus=None, memory_system=None):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self.event_bus = event_bus
         self.memory = memory_system
 

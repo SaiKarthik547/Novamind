@@ -6,17 +6,24 @@ from core.capability_broker import ResourceBudget
 
 logger = logging.getLogger("ResourceGovernor")
 
+
 class ResourceViolation(Exception):
+    pass
+
+
+class StarvationError(Exception):
     pass
 
 
 class ResourceGovernor:
     """
     Enforces ResourceBudgets associated with ExecutionLeases.
-    Provides temporal isolation and tracks subprocesses/threads.
+    Provides OS-level process enforcement, starvation detection, and hard quotas.
     """
     def __init__(self):
         self._monitored_processes: Dict[int, Dict] = {}
+        self._dispatch_count = 0
+        self.max_dispatches_per_minute = 1000
 
     def register_process(self, pid: int, task_id: str, budget: ResourceBudget):
         try:
@@ -27,17 +34,23 @@ class ResourceGovernor:
                 "budget": budget,
                 "start_time": time.monotonic()
             }
-            logger.debug(f"Governor tracking PID {pid} for task {task_id[:8]}")
+            logger.debug(f"Governor enforcing PID {pid} for task {task_id[:8]}")
         except psutil.NoSuchProcess:
             logger.warning(f"PID {pid} already dead before governor could track")
 
     def unregister_process(self, pid: int):
         self._monitored_processes.pop(pid, None)
+        
+    def record_dispatch(self):
+        self._dispatch_count += 1
+        # Simplistic starvation policy: if we hit 1000 dispatches rapidly, sleep briefly to let OS catch up
+        if self._dispatch_count % self.max_dispatches_per_minute == 0:
+            logger.warning("Dispatch quota reached. Throttling to prevent starvation.")
+            time.sleep(1.0)
 
     def check_resources(self):
         """
-        Called periodically (e.g., by a background thread or supervisor)
-        to enforce budgets across all tracked processes.
+        Called periodically (e.g., by KernelSupervisor) to enforce budgets.
         """
         dead_pids = []
         for pid, data in self._monitored_processes.items():
@@ -53,6 +66,13 @@ class ResourceGovernor:
                 duration = time.monotonic() - start_time
                 if duration > budget.max_duration_seconds:
                     self._terminate_violator(proc, f"Duration exceeded ({duration:.1f}s > {budget.max_duration_seconds}s)")
+                    dead_pids.append(pid)
+                    continue
+
+                # Starvation detection: if a process is using 100% CPU for too long
+                cpu_percent = proc.cpu_percent(interval=0.0)
+                if cpu_percent > 95.0 and duration > 30.0:
+                    self._terminate_violator(proc, f"CPU Starvation detected (>95% for 30s)")
                     dead_pids.append(pid)
                     continue
 
@@ -86,7 +106,10 @@ class ResourceGovernor:
         logger.error(f"Resource violation for PID {proc.pid}: {reason}. Terminating.")
         try:
             for child in proc.children(recursive=True):
-                child.kill()
+                try:
+                    child.kill()
+                except psutil.NoSuchProcess:
+                    pass
             proc.kill()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass

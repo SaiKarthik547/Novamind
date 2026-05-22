@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from core.runtime_paths import ensure_runtime_dir, get_runtime_root, runtime_path
+from core.foundation.runtime_paths import ensure_runtime_dir, get_runtime_root, runtime_path
 
 # ERROR 1 FIX: Force UTF-8 on Windows console before any logger calls.
 # Windows PowerShell defaults to CP1252 which cannot encode ✓ ✗ → etc.

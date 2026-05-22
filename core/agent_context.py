@@ -1,6 +1,6 @@
 import logging
 from typing import Any, Dict, List
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from core.capability_broker import ExecutionLease
 from core.transaction_manager import TransactionManager, TransactionType
 from core.execution_sandbox import ExecutionSandbox
@@ -19,9 +19,16 @@ class AgentContext:
     agent_id: str
     action: str
     parameters: Dict[str, Any]
+    
     lease: ExecutionLease
     sandbox: ExecutionSandbox
     transaction_manager: TransactionManager
+
+    kernel_supervisor: Any = None # Phase 9 Delegate
+
+    # Telemetry data that the agent might want to read, 
+    # but not modify.
+    telemetry_tags: Dict[str, str] = field(default_factory=dict)
     
     def begin_transaction(self, tx_type: TransactionType) -> str:
         """Starts a transaction for an effect."""

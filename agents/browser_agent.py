@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any, Tuple
 from html.parser import HTMLParser
 
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("BrowserAgent")
 
@@ -23,7 +23,7 @@ logger = logging.getLogger("BrowserAgent")
 class TextExtractor(HTMLParser):
     """Extract text from HTML"""
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self.texts = []
         self.in_script = False
 
@@ -53,7 +53,7 @@ class BrowserAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self.history: List[str] = []
         self.current_url: Optional[str] = None
         self.download_dir = os.path.expanduser("~/Downloads")

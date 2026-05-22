@@ -14,7 +14,7 @@ from enum import Enum
 import requests
 import threading
 
-from core.runtime_paths import runtime_path
+from core.foundation.runtime_paths import runtime_path
 
 logger = logging.getLogger("LLMRouter")
 

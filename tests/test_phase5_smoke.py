@@ -2,7 +2,7 @@ import sys
 sys.path.insert(0, ".")
 
 from shared.protocol.events import validate_message, PROTOCOL_VERSION
-from core.canonical import canonical_dumps, state_hash
+from core.foundation.canonical import canonical_dumps, state_hash
 from core.runtime_auditor import RuntimeAuditor
 
 # Test 1: canonical hash is deterministic

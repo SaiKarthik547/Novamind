@@ -28,7 +28,7 @@ from email import encoders
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.base_agent import BaseAgent
+from core.foundation.base_agent import BaseAgent
 
 logger = logging.getLogger("EmailAgent")
 
@@ -169,7 +169,7 @@ class EmailAgent(BaseAgent):
     }
 
     def __init__(self):
-        super().__init__()
+        super().__init__(name=self.__class__.__name__, role="Agent")
         self._accounts:    Dict[str, EmailAccount] = {}
         self._active_acct: Optional[str]           = None
         self._sent_count   = 0
