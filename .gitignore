@@ -35,6 +35,7 @@ env/
 env.bak/
 venv.bak/
 .local/
+test_env/
 
 # ── RUNTIME & CONFIGURATION ──────────────────────────────────────────────────
 .env                   # API keys and sensitive config
@@ -68,7 +69,7 @@ Thumbs.db
 Desktop.ini
 ehthumbs.db
 $RECYCLE.BIN/
-
+*.test_env/
 # ── TEMPORARY & CACHE ────────────────────────────────────────────────────────
 *.log
 *.log.*
