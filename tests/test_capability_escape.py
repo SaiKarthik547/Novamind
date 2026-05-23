@@ -1,38 +1,43 @@
-import pytest
-from core.runtime.syscall_gate import SyscallGate, CapabilityViolation
+import sys
+import unittest
+from typing import FrozenSet
 
-class MockAgentWithSubprocess:
-    def __init__(self):
-        import subprocess
-        self.sp = subprocess
+from core.runtime.syscall_gate import install_import_hook, CapabilityPolicyHook
+from core.runtime.exceptions import ImportCapabilityViolation
 
-def test_syscall_gate_detects_subprocess():
-    # Write a mock agent module to disk to test import blocking
-    with open("mock_agent_bad.py", "w") as f:
-        f.write("import subprocess\n")
-        f.write("class BadAgent:\n")
-        f.write("    pass\n")
-        
-    try:
-        import mock_agent_bad
-        with pytest.raises(CapabilityViolation):
-            SyscallGate.validate_agent_capabilities("mock_agent_bad")
-    finally:
-        import os
-        if os.path.exists("mock_agent_bad.py"):
-            os.remove("mock_agent_bad.py")
+class TestCapabilityEscape(unittest.TestCase):
+    def setUp(self):
+        self.basic_hook = CapabilityPolicyHook(frozenset(["compute"]))
+        self.network_hook = CapabilityPolicyHook(frozenset(["compute", "network"]))
+        self.process_hook = CapabilityPolicyHook(frozenset(["compute", "process_spawn"]))
 
-def test_syscall_gate_allows_safe_agent():
-    with open("mock_agent_good.py", "w") as f:
-        f.write("import json\n")
-        f.write("class GoodAgent:\n")
-        f.write("    pass\n")
-        
-    try:
-        import mock_agent_good
-        # Should not raise
-        SyscallGate.validate_agent_capabilities("mock_agent_good")
-    finally:
-        import os
-        if os.path.exists("mock_agent_good.py"):
-            os.remove("mock_agent_good.py")
+    def test_bootstrap_allowlist(self):
+        self.assertIsNone(self.basic_hook.find_spec("json", None))
+        self.assertIsNone(self.basic_hook.find_spec("asyncio", None))
+        self.assertIsNone(self.basic_hook.find_spec("sys", None))
+        self.assertIsNone(self.basic_hook.find_spec("encodings.utf_8", None))
+
+    def test_application_allowlist(self):
+        self.assertIsNone(self.basic_hook.find_spec("core.runtime.worker_sandbox", None))
+        self.assertIsNone(self.basic_hook.find_spec("workers.shell_worker", None))
+
+    def test_network_violation(self):
+        with self.assertRaises(ImportCapabilityViolation):
+            self.basic_hook.find_spec("socket", None)
+            
+        with self.assertRaises(ImportCapabilityViolation):
+            self.basic_hook.find_spec("urllib.request", None)
+
+    def test_network_allowed_with_capability(self):
+        self.assertIsNone(self.network_hook.find_spec("socket", None))
+        self.assertIsNone(self.network_hook.find_spec("urllib.request", None))
+
+    def test_process_spawn_violation(self):
+        with self.assertRaises(ImportCapabilityViolation):
+            self.basic_hook.find_spec("subprocess", None)
+
+    def test_process_spawn_allowed_with_capability(self):
+        self.assertIsNone(self.process_hook.find_spec("subprocess", None))
+
+if __name__ == "__main__":
+    unittest.main()

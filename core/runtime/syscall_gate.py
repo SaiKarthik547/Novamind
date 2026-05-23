@@ -1,56 +1,100 @@
+"""
+core/runtime/syscall_gate.py
+Capability Policy Layer (formerly Import Sandbox).
+
+This is a POLICY ENFORCEMENT layer, not a mathematically secure sandbox.
+The true security boundary is the Windows Job Object + OS boundary.
+(Note: ctypes escape is possible and acknowledged, but restricted by the OS layer).
+"""
+
 import sys
 import logging
-from typing import List
+from typing import FrozenSet
 
-logger = logging.getLogger("SyscallGate")
+from core.runtime.exceptions import ImportCapabilityViolation
 
-class CapabilityViolation(Exception):
-    pass
+logger = logging.getLogger(__name__)
 
-class SyscallGate:
+# Essential modules needed for Python bootstrap, logging, IPC, and standard execution.
+BOOTSTRAP_ALLOWLIST = {
+    "sys", "os", "importlib", "builtins", "_thread", "threading",
+    "time", "logging", "asyncio", "multiprocessing", "traceback",
+    "json", "cbor2", "struct", "typing", "collections", "contextlib",
+    "enum", "uuid", "abc", "ctypes", "wintypes", "datetime", "re",
+    "encodings", "codecs", "io", "math", "random", "_weakref", "weakref",
+    "copy", "hashlib", "hmac", "secrets", "types", "string", "warnings"
+}
+
+# Mapping of module names to the capability required to import them
+CAPABILITY_GATES = {
+    "socket": "network",
+    "urllib": "network",
+    "requests": "network",
+    "http": "network",
+    
+    "subprocess": "process_spawn",
+    "multiprocessing.popen_spawn_win32": "process_spawn",
+    
+    "shutil": "filesystem_write",
+    "pathlib": "filesystem_read",
+}
+
+
+class CapabilityPolicyHook:
     """
-    Centralized privileged execution gate.
-    Prevents direct privileged imports by agents inside the main process.
+    Intercepts imports to enforce the deterministic capability lease.
     """
-    FORBIDDEN_MODULES = {
-        "subprocess",
-        "socket",
-        "shutil",
-        # os is tricky because os.path is often needed, but we can block specific functions if we hook it.
-        # For this prototype, we just scan sys.modules or use an import hook.
-    }
-
-    @classmethod
-    def validate_agent_capabilities(cls, agent_module_name: str):
-        """
-        Scans an agent's module for forbidden imports.
-        In a true hardened environment, we would use a custom __import__ hook
-        or restricted execution environments. Here we do a static/dynamic check.
-        """
-        agent_module = sys.modules.get(agent_module_name)
-        if not agent_module:
-            return
-
-        for attr_name in dir(agent_module):
-            attr = getattr(agent_module, attr_name)
+    def __init__(self, capabilities: FrozenSet[str]):
+        self.capabilities = capabilities
+        self._allowed_prefixes = [
+            "encodings.", "collections.", "importlib.", "asyncio.", 
+            "json.", "cbor2.", "multiprocessing.", "logging.", "urllib.parse"
+        ]
+        
+    def find_spec(self, fullname, path, target=None):
+        # 1. Allow application internals
+        if fullname.startswith("core.") or fullname.startswith("workers.") or fullname.startswith("agents."):
+            return None # Pass to standard importer
             
-            # Check if it's a module
-            if type(attr).__name__ == "module":
-                if attr.__name__ in cls.FORBIDDEN_MODULES:
-                    raise CapabilityViolation(f"Agent {agent_module_name} illegally imported {attr.__name__}")
-                    
-        # Also check if they try to access os.system or os.popen directly
-        if hasattr(agent_module, 'os'):
-            os_mod = getattr(agent_module, 'os')
-            if hasattr(os_mod, 'system') or hasattr(os_mod, 'popen'):
-                # We can't easily prevent them from using it if they just import os, 
-                # but we can monkeypatch it out in the agent's context if we wanted to be strict.
-                pass
+        # 2. Allow bootstrap essentials and their submodules
+        if fullname in BOOTSTRAP_ALLOWLIST:
+            return None
+            
+        for prefix in self._allowed_prefixes:
+            if fullname.startswith(prefix):
+                return None
+                
+        # 3. Check capability gates
+        root_module = fullname.split('.')[0]
+        
+        # Exact match
+        required_cap = CAPABILITY_GATES.get(fullname)
+        if not required_cap:
+            # Fallback to root module
+            required_cap = CAPABILITY_GATES.get(root_module)
+            
+        if required_cap and required_cap not in self.capabilities:
+            logger.warning(f"Worker blocked from importing '{fullname}' (Requires capability: {required_cap})")
+            raise ImportCapabilityViolation(
+                f"Worker lacks '{required_cap}' capability required to import '{fullname}'."
+            )
 
-    @classmethod
-    def install_import_hook(cls):
-        """
-        Installs an import hook that raises an error if an agent tries to import a forbidden module.
-        (Implementation omitted for brevity, but conceptually this goes here).
-        """
-        pass
+        # Allow everything else (this is a policy layer, not a paranoid sandbox)
+        return None
+
+
+def install_import_hook(capabilities: frozenset):
+    """
+    Installs the Capability Policy Layer for the current process.
+    Capabilities must be a frozenset to ensure immutability post-handshake.
+    """
+    if not isinstance(capabilities, frozenset):
+        raise TypeError("Capabilities must be a frozenset.")
+        
+    # Check if already installed
+    for hook in sys.meta_path:
+        if isinstance(hook, CapabilityPolicyHook):
+            return
+            
+    sys.meta_path.insert(0, CapabilityPolicyHook(capabilities))
+    logger.info(f"[SyscallGate] Policy Layer installed. Immutable Lease: {set(capabilities)}")

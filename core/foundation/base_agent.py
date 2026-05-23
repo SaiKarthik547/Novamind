@@ -17,7 +17,6 @@ import json
 from typing import Any, Callable, Dict, List, Optional
 from pydantic import BaseModel, Field
 from core.runtime.agent_context import AgentContext
-from core.runtime.syscall_gate import SyscallGate
 
 # Phase 7 synchronization primitives — imported lazily to avoid circular
 # imports during early boot (main.py registers agents before the loop starts).
@@ -79,7 +78,6 @@ class BaseAgent:
         self.handlers: Dict[str, Callable] = {}
         self._action_log: list = []
         self.effect_journal = EffectJournal()
-        SyscallGate.validate_agent_capabilities(self.__class__.__module__)
 
     def get_state(self) -> dict:
         """Mandatory serialization contract for StateSnapshotManager."""
