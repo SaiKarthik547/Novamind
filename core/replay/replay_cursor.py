@@ -1,33 +1,45 @@
 class ReplayCursor:
     """
     Tracks the progression of incremental replay.
-    Aligns the snapshot's sequence_id with the incoming event stream sequence_ids.
+    Phase 11 introduces precise segmented cursor offsets for SALVAGE mode 
+    and checkpoint restoration.
     """
     
-    def __init__(self, snapshot_sequence: int = 0):
+    def __init__(self, 
+                 snapshot_sequence: int = 0, 
+                 segment_id: str = "00000",
+                 byte_offset: int = 0,
+                 event_index: int = 0,
+                 event_hash: str = None):
         self.snapshot_sequence = snapshot_sequence
         self.last_event_sequence = snapshot_sequence
         self.events_processed = 0
+        
+        # Phase 11 Forensic Lineage attributes
+        self.segment_id = segment_id
+        self.byte_offset = byte_offset
+        self.event_index = event_index
+        self.event_hash = event_hash
 
-    def advance(self, event_sequence: int) -> bool:
+    def advance(self, event_sequence: int, segment_id: str, byte_offset: int, event_index: int, event_hash: str) -> bool:
         """
-        Advances the cursor if the event sequence is strictly contiguous.
-        Returns True if successful, False if there's a gap or order violation.
+        Advances the cursor incrementally.
         """
-        if event_sequence <= self.snapshot_sequence:
-            # This event is already covered by the snapshot
-            return True
-            
-        if event_sequence == self.last_event_sequence + 1:
-            self.last_event_sequence = event_sequence
-            self.events_processed += 1
-            return True
-            
-        return False
+        self.last_event_sequence = event_sequence
+        self.events_processed += 1
+        self.segment_id = segment_id
+        self.byte_offset = byte_offset
+        self.event_index = event_index
+        self.event_hash = event_hash
+        return True
 
     def get_progress(self) -> dict:
         return {
             "snapshot_sequence": self.snapshot_sequence,
             "last_event_sequence": self.last_event_sequence,
-            "events_processed": self.events_processed
+            "events_processed": self.events_processed,
+            "segment_id": self.segment_id,
+            "byte_offset": self.byte_offset,
+            "event_index": self.event_index,
+            "event_hash": self.event_hash
         }

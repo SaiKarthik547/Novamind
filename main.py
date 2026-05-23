@@ -497,7 +497,7 @@ class NovaMindApp:
                 engine = ReplayEngine(mode=ReplayMode.STRICT)
                 success = engine.execute_recovery_sync(
                     snapshot=snapshot,
-                    session_log=self.runtime_store.get_session_log_path(),
+                    session_dir=self.runtime_store.get_session_log_dir(),
                     event_bus=self.event_bus
                 )
                 

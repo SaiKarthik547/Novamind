@@ -4,28 +4,95 @@ import logging
 from pathlib import Path
 import time
 import uuid
+import os
+
+from core.foundation.canonical import canonical_dumps, state_hash
+from core.replay.event_codec import JsonlEventCodec
 
 logger = logging.getLogger(__name__)
 
+MAX_SEGMENT_BYTES = 64 * 1024 * 1024  # 64 MB
+MAX_SEGMENT_EVENTS = 100_000
+
 class EventRecorder:
-    def __init__(self, log_path: str = None, logs_dir: str = "logs/session_events"):
-        if log_path:
-            self.log_file = Path(log_path)
-            self.session_id = self.log_file.stem.replace("session_", "")
-        else:
-            self.logs_dir = Path(logs_dir)
-            self.logs_dir.mkdir(parents=True, exist_ok=True)
-            self.session_id = str(uuid.uuid4())
-            self.log_file = self.logs_dir / f"session_{self.session_id}.jsonl"
+    """
+    Phase 11: Cryptographically chained, checkpoint-segmented Write-Ahead Log.
+    Uses EventStorageCodec to encode events safely.
+    Maintains a manifest.json tracking lineage across segments.
+    """
+    def __init__(self, log_dir: str = None, session_id: str = None):
+        self.session_id = session_id or str(uuid.uuid4())
+        base_dir = Path(log_dir) if log_dir else Path("runtime/logs")
+        self.session_dir = base_dir / f"session_{self.session_id}"
+        self.session_dir.mkdir(parents=True, exist_ok=True)
         
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self.manifest_file = self.session_dir / "manifest.json"
+        self._codec = JsonlEventCodec()
+        
         self._queue = asyncio.Queue()
         self._worker_task = None
+        
+        self._segment_index = 0
+        self._current_file = None
+        self._current_file_path = None
+        self._current_segment_bytes = 0
+        self._current_segment_events = 0
+        
+        self._last_hash = None
+        self._checkpoint_segments = []
+        
+        self._init_manifest()
+        self._open_segment(0)
+
+    def _init_manifest(self):
+        if self.manifest_file.exists():
+            try:
+                with open(self.manifest_file, "r", encoding="utf-8") as f:
+                    manifest = json.load(f)
+                    self._segment_index = manifest.get("segment_count", 0)
+                    self._checkpoint_segments = manifest.get("checkpoint_segments", [])
+            except json.JSONDecodeError:
+                pass
+        
+        self._update_manifest()
+
+    def _update_manifest(self):
+        manifest = {
+            "session_id": self.session_id,
+            "protocol_version": "1.0.0",
+            "segment_count": self._segment_index + 1,
+            "created_at_ns": time.time_ns(),
+            "last_segment": f"{self._segment_index:05d}.jsonl",
+            "checkpoint_segments": self._checkpoint_segments
+        }
+        temp_file = self.manifest_file.with_suffix(".tmp")
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        temp_file.replace(self.manifest_file)
+
+    def _open_segment(self, index: int):
+        if self._current_file:
+            self._current_file.close()
+            
+        self._segment_index = index
+        self._current_segment_bytes = 0
+        self._current_segment_events = 0
+        self._current_file_path = self.session_dir / f"{index:05d}.jsonl"
+        self._current_file = open(self._current_file_path, "a", encoding="utf-8")
+        self._update_manifest()
+        logger.info(f"[EventRecorder] Opened new segment: {self._current_file_path.name}")
+
+    def _rotate_segment(self, is_checkpoint: bool = False):
+        if is_checkpoint:
+            self._checkpoint_segments.append(self._segment_index)
+        self._open_segment(self._segment_index + 1)
 
     async def start(self):
         """Starts the background worker to write logs asynchronously."""
         self._worker_task = asyncio.create_task(self._process_queue())
-        logger.info(f"EventRecorder started. Logging to {self.log_file}")
+        logger.info(f"EventRecorder started. Logging to directory {self.session_dir}")
 
     async def stop(self):
         """Stops the worker and flushes the queue."""
@@ -41,12 +108,15 @@ class EventRecorder:
             event = self._queue.get_nowait()
             self._write_to_disk(event)
             
+        if self._current_file:
+            self._current_file.close()
+            self._current_file = None
+            
         logger.info("EventRecorder stopped.")
 
     def log_event(self, event_type: str, source_runtime: str, severity: str, payload: dict, correlation_id: str = None, msg_id: str = None):
         """
-        Submits an event to the append-only JSONL log.
-        This method is thread-safe as it pushes to an asyncio queue if a loop is running.
+        Submits an event to the WAL.
         """
         event = {
             "timestamp": time.time(),
@@ -62,7 +132,6 @@ class EventRecorder:
             loop = asyncio.get_running_loop()
             loop.call_soon_threadsafe(self._queue.put_nowait, event)
         except RuntimeError:
-            # If no event loop is running in this thread, write directly (blocking)
             self._write_to_disk(event)
 
     async def _process_queue(self):
@@ -73,13 +142,38 @@ class EventRecorder:
             self._queue.task_done()
 
     def _write_to_disk(self, event: dict):
-        """Blocking disk write. Opens in append mode."""
+        """Blocking disk write. Calculates hash chain, serializes, appends, fsyncs."""
         try:
-            from core.foundation.canonical import canonical_dumps
-            with open(self.log_file, "a", encoding="utf-8") as f:
-                f.write(canonical_dumps(event) + "\n")
-                f.flush()
-                import os
-                os.fsync(f.fileno())
+            # 1. Cryptographic Chaining
+            event["previous_hash"] = self._last_hash
+            
+            # The event_hash strictly excludes itself to prevent recursive instability
+            event.pop("event_hash", None)
+            
+            # Calculate canonical hash of the pure lineage node
+            current_hash = state_hash(event)
+            event["event_hash"] = current_hash
+            self._last_hash = current_hash
+
+            # 2. Encode
+            data = self._codec.encode(event)
+            data_len = len(data)
+
+            # 3. Size Ceiling Pre-check
+            if self._current_segment_bytes + data_len > MAX_SEGMENT_BYTES or self._current_segment_events >= MAX_SEGMENT_EVENTS:
+                self._rotate_segment()
+
+            # 4. Write & Sync
+            self._current_file.write(data.decode("utf-8")) # JSONL codec returns utf-8 bytes, open() expects str
+            self._current_file.flush()
+            os.fsync(self._current_file.fileno())
+
+            self._current_segment_bytes += data_len
+            self._current_segment_events += 1
+
+            # 5. Checkpoint Rotation (Post-Write)
+            if event["event_type"] == "SNAPSHOT_COMMIT":
+                self._rotate_segment(is_checkpoint=True)
+
         except Exception as e:
             logger.error(f"EventRecorder failed to write to disk: {e}")

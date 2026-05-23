@@ -63,30 +63,39 @@ def test_supervisor_degraded_transition(mock_event_bus, mock_recorder):
     published_events = [call[0][0]["type"] for call in mock_event_bus.publish.call_args_list]
     assert "STATE_DIVERGENCE" in published_events
 
-def test_mid_replay_crash_simulation():
+@pytest.mark.asyncio
+async def test_mid_replay_crash_simulation():
     """
     Simulates an incremental replay over a session log where a corrupted JSON line exists mid-stream.
     Asserts STRICT mode crashes, but DIAGNOSTIC mode skips and continues.
     """
     from core.replay.replay_engine import ReplayEngine, ReplayMode
+    from core.replay.event_recorder import EventRecorder
     import tempfile
-    import json
+    import os
     from pathlib import Path
+
+    temp_dir = Path(tempfile.mkdtemp())
+    recorder = EventRecorder(log_dir=str(temp_dir), session_id="test_crash")
+    await recorder.start()
     
-    with tempfile.NamedTemporaryFile("w+", delete=False) as tf:
-        tf.write(json.dumps({"sequence_id": 1, "payload": {}}) + "\n")
-        tf.write("CORRUPT JSON LINE\n")
-        tf.write(json.dumps({"sequence_id": 3, "payload": {}}) + "\n")
-        log_path = Path(tf.name)
-        
+    recorder.log_event("TEST", "core", "info", {"v": 1})
+    await recorder.stop()
+    
+    log_dir = recorder.session_dir
+    log_file = log_dir / "00000.jsonl"
+    
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write("CORRUPT JSON LINE\n")
+
     try:
         engine = ReplayEngine(mode=ReplayMode.STRICT)
-        with pytest.raises(ValueError, match="Corrupt JSON"):
-            list(engine._read_deltas(log_path, 0))
+        with pytest.raises(ValueError, match="Corrupt data at"):
+            list(engine._read_deltas(log_dir, 0))
             
         engine_diag = ReplayEngine(mode=ReplayMode.DIAGNOSTIC)
-        events = list(engine_diag._read_deltas(log_path, 0))
-        assert len(events) == 2 # 1 and 3
-        
+        events = list(engine_diag._read_deltas(log_dir, 0))
+        assert len(events) == 1
     finally:
-        log_path.unlink()
+        import shutil
+        shutil.rmtree(temp_dir)

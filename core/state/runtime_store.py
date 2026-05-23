@@ -32,8 +32,8 @@ class RuntimeStore:
             agent_registry=agent_registry
         )
 
-    def get_session_log_path(self) -> Path:
-        return Path(self.event_recorder.log_file)
+    def get_session_log_dir(self) -> Path:
+        return self.event_recorder.session_dir
 
     async def trigger_snapshot(self, sequence_id: int):
         """Async: delegates to the barrier-protected StateSnapshotManager."""
