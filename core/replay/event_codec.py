@@ -5,19 +5,22 @@ Abstract protocol for WAL event storage.
 Phase 11 introduces this abstraction to allow seamless future migration from 
 JSONL to binary CBOR/mmap segments without breaking ReplayEngine logic.
 """
-from typing import Protocol, Any, Dict
+from abc import ABC, abstractmethod
+from typing import Any, Dict , Protocol
 import json
 from core.foundation.canonical import canonical_dumps
 
 
-class EventStorageCodec(Protocol):
+class EventStorageCodec(ABC):
+    @abstractmethod
     def encode(self, event: Dict[str, Any]) -> bytes:
         """Serializes an event dictionary into transport/storage bytes."""
-        ...
+        raise NotImplementedError("Subclasses must implement encode()")
 
+    @abstractmethod
     def decode(self, data: bytes) -> Dict[str, Any]:
         """Deserializes bytes into an event dictionary."""
-        ...
+        raise NotImplementedError("Subclasses must implement decode()")
 
 
 class JsonlEventCodec:

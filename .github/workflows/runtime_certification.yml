@@ -30,9 +30,13 @@ jobs:
       run: |
         pytest tests/test_async_concurrency.py tests/test_replay_equivalence.py -v
 
-    - name: Run Phase 9 Kernel Tests
+    - name: Run Phase 9/11 Kernel Tests
       run: |
-        pytest tests/test_worker_crash_recovery.py tests/test_job_object_enforcement.py tests/test_capability_escape.py -v
+        pytest tests/test_worker_crash_recovery.py tests/test_job_object_enforcement.py tests/test_capability_escape.py tests/test_ipc_watchdogs.py tests/test_legacy_wal_fallback.py tests/test_partial_segment_recovery.py tests/test_wal_hash_chain.py tests/test_wal_segmentation.py -v
+
+    - name: Run Phase 12 Telemetry & Observability Tests
+      run: |
+        pytest tests/test_telemetry_ordering.py tests/test_adapter_lifecycle.py -v
 
     - name: Run Schema Validator
       run: |

@@ -33,8 +33,8 @@ except ImportError:
             self.region = region
         def __enter__(self):
             return self
-        def __exit__(self, *_):
-            pass
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
         def verify_changed(self, desc: str = "") -> bool:
             return True
         def verify_unchanged(self, desc: str = "") -> bool:
