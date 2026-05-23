@@ -35,6 +35,9 @@ class IntentExecutionState(str, Enum):
     COMPENSATED  = "COMPENSATED"   # Compensation finished successfully
     ABORTED      = "ABORTED"       # Cancelled before execution started
     REJECTED     = "REJECTED"      # Capability not allowed; never executed
+    ORPHANED     = "ORPHANED"      # Adapter crashed during execution
+    RECOVERING   = "RECOVERING"    # Kernel attempting to recover orphaned intent
+    RECONCILED   = "RECONCILED"    # Orphaned intent successfully cleaned up/recovered
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -63,6 +66,15 @@ LEGAL_TRANSITIONS: Dict[IntentExecutionState, FrozenSet[IntentExecutionState]] =
     IntentExecutionState.RUNNING: frozenset({
         IntentExecutionState.VERIFYING,
         IntentExecutionState.FAILED,
+        IntentExecutionState.ORPHANED, # Adapter crash detection
+    }),
+    IntentExecutionState.ORPHANED: frozenset({
+        IntentExecutionState.RECOVERING,
+        IntentExecutionState.FAILED,
+    }),
+    IntentExecutionState.RECOVERING: frozenset({
+        IntentExecutionState.RECONCILED,
+        IntentExecutionState.FAILED,
     }),
     IntentExecutionState.VERIFYING: frozenset({
         IntentExecutionState.COMPLETED,
@@ -80,6 +92,7 @@ LEGAL_TRANSITIONS: Dict[IntentExecutionState, FrozenSet[IntentExecutionState]] =
     IntentExecutionState.COMPENSATED: frozenset(),   # Terminal
     IntentExecutionState.ABORTED:     frozenset(),   # Terminal
     IntentExecutionState.REJECTED:    frozenset(),   # Terminal
+    IntentExecutionState.RECONCILED:  frozenset(),   # Terminal
 }
 
 # Terminal states — no further transitions permitted
@@ -88,6 +101,7 @@ TERMINAL_STATES: FrozenSet[IntentExecutionState] = frozenset({
     IntentExecutionState.COMPENSATED,
     IntentExecutionState.ABORTED,
     IntentExecutionState.REJECTED,
+    IntentExecutionState.RECONCILED,
 })
 
 

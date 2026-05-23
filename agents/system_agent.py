@@ -223,6 +223,7 @@ class SystemAgent(BaseAgent):
                         timeout: int = None, capture_output: bool = True,
                         stdin_input: str = None, context: Any = None) -> Dict:
         """Execute a system command with full security checking."""
+        logger.warning("DEPRECATION WARNING: SystemAgent.execute_command is deprecated in Phase 13. Emit ExecutionIntent via AgentContext.", stack_info=True)
         allowed, reason = self._security_check(command)
         if not allowed:
             return {"success": False, "error": f"Security blocked: {reason}"}
@@ -287,6 +288,7 @@ class SystemAgent(BaseAgent):
     def execute_script(self, code: str, language: str = "python",
                        timeout: int = 60) -> Dict:
         """Execute a code snippet in the appropriate interpreter."""
+        logger.warning("DEPRECATION WARNING: SystemAgent.execute_script is deprecated in Phase 13. Emit ExecutionIntent via AgentContext.", stack_info=True)
         # O(1) dict dispatch — zero elif routing
         _EXEC_DISPATCH = {
             "python":     self._exec_python,
@@ -374,6 +376,7 @@ class SystemAgent(BaseAgent):
     def execute_powershell(self, script: str, timeout: int = 120,
                             execution_policy: str = "Bypass") -> Dict:
         """Execute a PowerShell script (Windows and pwsh on Linux/Mac)."""
+        logger.warning("DEPRECATION WARNING: SystemAgent.execute_powershell is deprecated in Phase 13. Emit ExecutionIntent via AgentContext.", stack_info=True)
         ps = shutil.which("pwsh") or shutil.which("powershell")
         if not ps:
             return {"success": False, "error": "PowerShell not found"}
@@ -406,6 +409,7 @@ class SystemAgent(BaseAgent):
 
     def execute_batch(self, script: str, timeout: int = 60) -> Dict:
         """Execute a Windows batch (.bat) script."""
+        logger.warning("DEPRECATION WARNING: SystemAgent.execute_batch is deprecated in Phase 13. Emit ExecutionIntent via AgentContext.", stack_info=True)
         with tempfile.NamedTemporaryFile(mode="w", suffix=".bat",
                                           delete=False, encoding="utf-8") as f:
             f.write(script); tmp = f.name

@@ -63,3 +63,19 @@ class AdapterSupervisor:
         adapter = self._active_adapters.pop(worker_id, None)
         if adapter:
             adapter.teardown()
+
+    def execute_intent(self, intent: 'ExecutionIntent') -> 'Any':
+        """
+        Lazily assigns an adapter if needed, and executes the intent.
+        Replaces the dispatcher's direct management of adapter lifecycle.
+        """
+        adapter_name = intent.adapter
+        worker_id = f"agent_worker_{adapter_name}" # Isolated per adapter type
+        
+        if worker_id not in self._active_adapters:
+            success = self.assign_adapter(worker_id, adapter_name)
+            if not success:
+                raise RuntimeError(f"Failed to assign adapter {adapter_name} for worker {worker_id}")
+                
+        adapter = self._active_adapters[worker_id]
+        return adapter.execute(intent)

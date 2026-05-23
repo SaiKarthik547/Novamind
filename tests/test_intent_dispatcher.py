@@ -41,11 +41,11 @@ class TestIntentDispatcher(unittest.TestCase):
             payload={"cmd": "echo hello"}
         )
         
-        result = self.dispatcher.execute_sync(intent)
+        result = self.dispatcher.dispatch_sync(intent)
         
-        self.assertEqual(intent.status, IntentStatus.COMPLETED)
-        self.assertIn("session_id", result)
-        self.assertIn("command_epoch", result)
+        self.assertTrue(result.success)
+        self.assertIn("session_id", result.payload)
+        self.assertIn("command_epoch", result.payload)
 
     def test_execute_sync_unknown_adapter_fails(self):
         intent = ExecutionIntent(
@@ -58,11 +58,10 @@ class TestIntentDispatcher(unittest.TestCase):
             payload={"cmd": "echo hello"}
         )
         
-        result = self.dispatcher.execute_sync(intent)
+        result = self.dispatcher.dispatch_sync(intent)
         
-        self.assertEqual(intent.status, IntentStatus.FAILED)
-        self.assertIn("Failed to assign adapter", intent.error)
-        self.assertEqual(result["returncode"], -1)
+        self.assertFalse(result.success)
+        self.assertIn("Failed to assign adapter", result.error)
         
 if __name__ == '__main__':
     unittest.main()

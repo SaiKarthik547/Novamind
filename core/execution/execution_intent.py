@@ -35,7 +35,7 @@ class IntentDeterminismLevel(Enum):
     PROBABILISTIC = "PROBABILISTIC"
     NON_DETERMINISTIC = "NON_DETERMINISTIC"
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutionIntent:
     """
     The boundary between Agent Intelligence and Kernel Execution.
@@ -55,16 +55,11 @@ class ExecutionIntent:
 
     intent_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     agent_id: str = "UNKNOWN"
-    status: IntentStatus = IntentStatus.PENDING
 
     # Scheduling & Determinism
     priority: IntentPriority = IntentPriority.STANDARD
     determinism: IntentDeterminismLevel = IntentDeterminismLevel.PROBABILISTIC
     timeout_ms: int = 30000
-
-    # Results
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
 
     # ── L2-A: Kernel Convergence Fields ──────────────────────────────────────
     # Causation lineage — required for WAL replay integrity
@@ -95,12 +90,9 @@ class ExecutionIntent:
             "rollback_strategy": self.rollback_strategy.value,
             "capability_scope": self.capability_scope,
             "payload": self.payload,
-            "status": self.status.value,
             "priority": self.priority.name,
             "determinism": self.determinism.value,
             "timeout_ms": self.timeout_ms,
-            "result": self.result,
-            "error": self.error,
             # L2-A: Kernel convergence fields
             "parent_intent_id": self.parent_intent_id,
             "causation_chain": self.causation_chain,

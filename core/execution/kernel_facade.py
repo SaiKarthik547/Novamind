@@ -32,6 +32,8 @@ from core.execution.intent_execution_state import (
     IntentExecutionState,
     IntentStateError,
 )
+from core.execution.intent_result import IntentResult
+from core.execution.execution_intent import IntentStatus
 
 logger = logging.getLogger("KernelExecutionFacade")
 
@@ -76,10 +78,15 @@ class KernelExecutionFacade:
         )
     """
 
-    def __init__(self):
+    def __init__(self, dispatcher=None):
         self._registry = CAPABILITY_REGISTRY
-        # Adapter registry is imported lazily to avoid circular imports at module load
         self._active_intents: Dict[str, float] = {}  # intent_id -> start_time
+        
+        if dispatcher is None:
+            # Transitional fallback until callers explicitly inject RuntimeKernel
+            from core.execution.runtime_kernel import RuntimeKernel
+            dispatcher = RuntimeKernel.get_instance().dispatcher
+        self._dispatcher = dispatcher
 
     # ── Public API ───────────────────────────────────────────────────────────
 
@@ -94,13 +101,12 @@ class KernelExecutionFacade:
         causation_chain: Optional[list] = None,
         exclusive_resource_locks: Optional[list] = None,
         timeout: float = 30.0,
-    ) -> Dict[str, Any]:
+    ) -> IntentResult:
         """
         Route a capability request through the kernel.
 
         Raises PermissionError if the capability is not registered.
-        Returns a result dict with keys: success, data, error, authority_origin,
-        determinism_class, duration_ms.
+        Returns an IntentResult.
         """
         intent_id = str(uuid.uuid4())
         start = time.monotonic()
@@ -154,10 +160,24 @@ class KernelExecutionFacade:
 
         # ── Step 4: Route to correct execution path ───────────────────────
         self._active_intents[intent_id] = start
+        
+        from core.execution.resource_lock_manager import ResourceLockManager
+        lock_manager = ResourceLockManager.get_instance()
+        lock_manager.acquire_lock(commutative, exclusive_resource_locks)
+        
         try:
             _sm_advance(sm, IntentExecutionState.QUEUED)
+            
+            # P13B-1: Enforce WAL Persistence Barrier before DISPATCHED
+            from core.execution.recovery_journal import RecoveryJournal
+            journal = RecoveryJournal.get_instance()
+            journal.log_transition(intent_id, IntentExecutionState.QUEUED, intent_meta)
+            
             _sm_advance(sm, IntentExecutionState.DISPATCHED)
+            journal.log_transition(intent_id, IntentExecutionState.DISPATCHED)
+            
             _sm_advance(sm, IntentExecutionState.RUNNING)
+            journal.log_transition(intent_id, IntentExecutionState.RUNNING)
 
             if defn.determinism_class == DeterminismClass.NON_DETERMINISTIC:
                 result = self._route_legacy(capability, payload, intent_meta)
@@ -165,27 +185,77 @@ class KernelExecutionFacade:
                 result = self._route_adapter(capability, payload, intent_meta, timeout)
 
             _sm_advance(sm, IntentExecutionState.VERIFYING)
+            journal.log_transition(intent_id, IntentExecutionState.VERIFYING)
+            
             _sm_advance(sm, IntentExecutionState.COMPLETED)
+            journal.log_transition(intent_id, IntentExecutionState.COMPLETED)
 
         except Exception as exc:
             logger.error(f"[KernelFacade] Intent {intent_id[:8]} FAILED with exception: {exc}", exc_info=True)
-            _sm_advance(sm, IntentExecutionState.FAILED)
+            
+            # P13D-2: Adapter crash/orphan detection
+            # Heuristic: Connection errors or specific runtime errors indicate the adapter process died
+            is_adapter_crash = isinstance(exc, (ConnectionError, BrokenPipeError, EOFError))
+            
+            if is_adapter_crash:
+                _sm_advance(sm, IntentExecutionState.ORPHANED)
+                # P13D-3: Integrate PanicManager
+                try:
+                    from core.transaction.panic_manager import PanicManager, PanicLevel
+                    pm = PanicManager()
+                    pm.invoke_panic(PanicLevel.RECOVERABLE, f"Adapter crashed during intent {intent_id}", "adapter_worker")
+                except Exception as pm_exc:
+                    logger.error(f"Failed to invoke PanicManager: {pm_exc}")
+                    
+                try:
+                    from core.execution.recovery_journal import RecoveryJournal
+                    RecoveryJournal.get_instance().log_transition(intent_id, IntentExecutionState.ORPHANED)
+                except Exception:
+                    pass
+            else:
+                _sm_advance(sm, IntentExecutionState.FAILED)
+                try:
+                    from core.execution.recovery_journal import RecoveryJournal
+                    RecoveryJournal.get_instance().log_transition(intent_id, IntentExecutionState.FAILED)
+                except Exception:
+                    pass
+            
             return self._error_result(intent_id, str(exc), capability, authority_origin, start)
         finally:
             self._active_intents.pop(intent_id, None)
+            lock_manager.release_lock(commutative, exclusive_resource_locks)
 
         # ── Step 5: Stamp authority metadata on result ────────────────────
         duration_ms = int((time.monotonic() - start) * 1000)
-        result["intent_id"] = intent_id
-        result["authority_origin"] = authority_origin
-        result["determinism_class"] = defn.determinism_class.value
-        result["duration_ms"] = duration_ms
+        
+        # Result is now an immutable IntentResult, we must return a new one with updated metrics
+        final_metrics = dict(result.metrics)
+        final_metrics.update({
+            "authority_origin": authority_origin,
+            "determinism_class": defn.determinism_class.value,
+            "duration_ms": duration_ms
+        })
+        
+        final_result = IntentResult(
+            intent_id=intent_id,
+            status=result.status,
+            success=result.success,
+            payload=result.payload,
+            error=result.error,
+            metrics=final_metrics
+        )
+
+        try:
+            from core.execution.runtime_metrics import RuntimeMetrics
+            RuntimeMetrics.get_instance().record_intent_completion(final_result)
+        except Exception as e:
+            logger.warning(f"Failed to record runtime metrics: {e}")
 
         logger.info(
             f"[KernelFacade] Intent {intent_id[:8]} completed in {duration_ms}ms | "
-            f"success={result.get('success', False)}"
+            f"success={final_result.success}"
         )
-        return result
+        return final_result
 
     # ── Routing paths ────────────────────────────────────────────────────────
 
@@ -195,7 +265,7 @@ class KernelExecutionFacade:
         payload: Dict[str, Any],
         intent_meta: Dict[str, Any],
         timeout: float,
-    ) -> Dict[str, Any]:
+    ) -> IntentResult:
         """
         Route to registered kernel Adapter.
         Adapter name is the first segment of the capability (e.g. "filesystem" from "filesystem.write").
@@ -213,17 +283,17 @@ class KernelExecutionFacade:
             rollback_strategy=RollbackMode.NO_ROLLBACK,
             capability_scope={"capability": capability},
             payload=payload,
+            intent_id=intent_meta["intent_id"]
         )
 
-        dispatcher = IntentDispatcher()
-        return dispatcher.dispatch_sync(intent)
+        return self._dispatcher.dispatch_sync(intent)
 
     def _route_legacy(
         self,
         capability: str,
         payload: Dict[str, Any],
         intent_meta: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> IntentResult:
         """
         Route to the quarantined LegacyUIAdapter.
         Only NON_DETERMINISTIC capabilities reach here.
@@ -232,13 +302,21 @@ class KernelExecutionFacade:
         try:
             from core.legacy.legacy_ui_adapter import LegacyUIAdapter
             adapter = LegacyUIAdapter()
-            return adapter.execute_capability(capability, payload)
+            result_dict = adapter.execute_capability(capability, payload)
+            return IntentResult(
+                intent_id=intent_meta["intent_id"],
+                status=IntentStatus.COMPLETED if result_dict.get("success", False) else IntentStatus.FAILED,
+                success=result_dict.get("success", False),
+                payload=result_dict
+            )
         except ImportError:
-            return {
-                "success": False,
-                "error": "LegacyUIAdapter not available. Cannot execute NON_DETERMINISTIC capability.",
-                "capability": capability,
-            }
+            return IntentResult(
+                intent_id=intent_meta["intent_id"],
+                status=IntentStatus.FAILED,
+                success=False,
+                payload={},
+                error="LegacyUIAdapter not available. Cannot execute NON_DETERMINISTIC capability."
+            )
 
     # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -249,12 +327,16 @@ class KernelExecutionFacade:
         capability: str,
         authority_origin: str,
         start: float,
-    ) -> Dict[str, Any]:
-        return {
-            "success": False,
-            "error": error,
-            "intent_id": intent_id,
-            "capability": capability,
-            "authority_origin": authority_origin,
-            "duration_ms": int((time.monotonic() - start) * 1000),
-        }
+    ) -> IntentResult:
+        return IntentResult(
+            intent_id=intent_id,
+            status=IntentStatus.FAILED,
+            success=False,
+            payload={},
+            error=error,
+            metrics={
+                "capability": capability,
+                "authority_origin": authority_origin,
+                "duration_ms": int((time.monotonic() - start) * 1000)
+            }
+        )

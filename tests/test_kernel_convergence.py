@@ -184,36 +184,40 @@ class TestKernelExecutionFacade(unittest.TestCase):
         from core.execution.kernel_facade import KernelExecutionFacade
         facade = KernelExecutionFacade()
         result = facade.dispatch("agent.raw_subprocess", {"cmd": "whoami"})
-        self.assertFalse(result["success"])
-        self.assertIn("not registered", result["error"])
-        self.assertEqual(result["authority_origin"], "unsafe_runtime")
+        self.assertFalse(result.success)
+        self.assertIn("not registered", result.error)
+        self.assertEqual(result.metrics["authority_origin"], "unsafe_runtime")
 
     def test_ui_capability_routes_to_legacy(self):
         from core.execution.kernel_facade import KernelExecutionFacade
+        from core.execution.intent_result import IntentResult
+        from core.execution.execution_intent import IntentStatus
         facade = KernelExecutionFacade()
         with patch("core.execution.kernel_facade.KernelExecutionFacade._route_legacy") as mock_legacy:
-            mock_legacy.return_value = {"success": True}
+            mock_legacy.return_value = IntentResult("mock", IntentStatus.COMPLETED, True, {}, "", {})
             result = facade.dispatch("ui.mouse_click", {"x": 100, "y": 200})
             mock_legacy.assert_called_once()
-            self.assertEqual(result["authority_origin"], "legacy_bridge")
-            self.assertEqual(result["determinism_class"], "NON_DETERMINISTIC")
+            self.assertEqual(result.metrics["authority_origin"], "legacy_bridge")
+            self.assertEqual(result.metrics["determinism_class"], "NON_DETERMINISTIC")
 
     def test_filesystem_capability_routes_to_adapter(self):
         from core.execution.kernel_facade import KernelExecutionFacade
+        from core.execution.intent_result import IntentResult
+        from core.execution.execution_intent import IntentStatus
         facade = KernelExecutionFacade()
         with patch("core.execution.kernel_facade.KernelExecutionFacade._route_adapter") as mock_adapter:
-            mock_adapter.return_value = {"success": True, "content": "data"}
+            mock_adapter.return_value = IntentResult("mock", IntentStatus.COMPLETED, True, {"content": "data"}, "", {})
             result = facade.dispatch("filesystem.read", {"path": "/tmp/test.txt"})
             mock_adapter.assert_called_once()
-            self.assertEqual(result["authority_origin"], "kernel")
+            self.assertEqual(result.metrics["authority_origin"], "kernel")
 
     def test_result_always_contains_intent_metadata(self):
         from core.execution.kernel_facade import KernelExecutionFacade
         facade = KernelExecutionFacade()
         result = facade.dispatch("nonexistent.cap", {})
-        self.assertIn("intent_id", result)
-        self.assertIn("authority_origin", result)
-        self.assertIn("duration_ms", result)
+        self.assertTrue(hasattr(result, "intent_id"))
+        self.assertIn("authority_origin", result.metrics)
+        self.assertIn("duration_ms", result.metrics)
 
 
 if __name__ == "__main__":
