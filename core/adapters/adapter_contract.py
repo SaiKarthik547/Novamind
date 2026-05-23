@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 class AdapterState(Enum):
     CREATED = "CREATED"

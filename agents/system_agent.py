@@ -253,7 +253,7 @@ class SystemAgent(BaseAgent):
                 )
             else:
                 # Legacy unisolated execution
-                proc = subprocess.Popen(
+                proc = self._dispatch_cmd(
                     command, shell=shell, cwd=cwd, env=run_env,
                     stdout=subprocess.PIPE if capture_output else None,
                     stderr=subprocess.PIPE if capture_output else None,
@@ -313,7 +313,7 @@ class SystemAgent(BaseAgent):
                                           delete=False, encoding="utf-8") as f:
             f.write(code); tmp = f.name
         try:
-            proc = subprocess.Popen(
+            proc = self._dispatch_cmd(
                 [sys.executable, tmp],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace",
@@ -339,7 +339,7 @@ class SystemAgent(BaseAgent):
                                           delete=False, encoding="utf-8") as f:
             f.write(code); tmp = f.name
         try:
-            proc = subprocess.Popen([sh, tmp], stdout=subprocess.PIPE,
+            proc = self._dispatch_cmd([sh, tmp], stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, text=True)
             try:
                 out, err = proc.communicate(timeout=timeout)
@@ -359,7 +359,7 @@ class SystemAgent(BaseAgent):
                                           delete=False, encoding="utf-8") as f:
             f.write(code); tmp = f.name
         try:
-            proc = subprocess.Popen([node, tmp], stdout=subprocess.PIPE,
+            proc = self._dispatch_cmd([node, tmp], stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, text=True)
             try:
                 out, err = proc.communicate(timeout=timeout)
@@ -381,7 +381,7 @@ class SystemAgent(BaseAgent):
                                           delete=False, encoding="utf-8") as f:
             f.write(script); tmp = f.name
         try:
-            proc = subprocess.Popen(
+            proc = self._dispatch_cmd(
                 [ps, "-ExecutionPolicy", execution_policy,
                  "-NonInteractive", "-File", tmp],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -408,7 +408,7 @@ class SystemAgent(BaseAgent):
                                           delete=False, encoding="utf-8") as f:
             f.write(script); tmp = f.name
         try:
-            proc = subprocess.Popen(
+            proc = self._dispatch_cmd(
                 ["cmd.exe", "/C", tmp] if IS_WINDOWS else ["sh", tmp],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 text=True, encoding="utf-8", errors="replace",
@@ -455,7 +455,7 @@ class SystemAgent(BaseAgent):
 
         if IS_WINDOWS:
             try:
-                r = subprocess.run(
+                r = self._dispatch_cmd(
                     ["wmic", "computersystem", "get",
                      "Manufacturer,Model,TotalPhysicalMemory", "/format:csv"],
                     capture_output=True, text=True, timeout=30,
@@ -583,7 +583,7 @@ class SystemAgent(BaseAgent):
             }
             for key, cmd in queries.items():
                 try:
-                    r = subprocess.run(cmd.split(), capture_output=True, text=True, timeout=30)
+                    r = self._dispatch_cmd(cmd.split(), capture_output=True, text=True, timeout=30)
                     lines = [l.strip() for l in r.stdout.splitlines()
                              if l.strip() and "Node" not in l and l.count(",") > 0]
                     info[key] = lines
@@ -591,11 +591,11 @@ class SystemAgent(BaseAgent):
 
         def _get_linux():
             try:
-                r1 = subprocess.run(["lscpu"], capture_output=True, text=True, timeout=30)
+                r1 = self._dispatch_cmd(["lscpu"], capture_output=True, text=True, timeout=30)
                 info["cpu"] = r1.stdout.strip()
-                r2 = subprocess.run(["free", "-h"], capture_output=True, text=True, timeout=30)
+                r2 = self._dispatch_cmd(["free", "-h"], capture_output=True, text=True, timeout=30)
                 info["memory"] = r2.stdout.strip()
-                r3 = subprocess.run(["lspci"], capture_output=True, text=True, timeout=30)
+                r3 = self._dispatch_cmd(["lspci"], capture_output=True, text=True, timeout=30)
                 info["gpu"] = "\n".join(l for l in r3.stdout.splitlines() if "vga" in l.lower()).strip()
             except Exception: pass
 
@@ -815,7 +815,7 @@ class SystemAgent(BaseAgent):
     def _sc(self, *args, timeout: int = 15) -> Dict:
         if not IS_WINDOWS:
             return {"success": False, "error": "Services only available on Windows"}
-        r = subprocess.run(["sc"] + list(args), capture_output=True, text=True, timeout=timeout)
+        r = self._dispatch_cmd(["sc"] + list(args), capture_output=True, text=True, timeout=timeout)
         return {"success": r.returncode == 0, "stdout": r.stdout, "stderr": r.stderr}
 
     def list_services(self, state: str = "all", search: str = None,
@@ -827,7 +827,7 @@ class SystemAgent(BaseAgent):
             r   = self.execute_command(cmd)
             return r
 
-        r = subprocess.run(
+        r = self._dispatch_cmd(
             ["sc", "query", "type=", "all", "state=", state],
             capture_output=True, text=True, timeout=30,
         )
@@ -879,7 +879,7 @@ class SystemAgent(BaseAgent):
         }
 
     def get_service(self, name: str) -> Dict:
-        r = subprocess.run(["sc", "query", name], capture_output=True, text=True, timeout=30)
+        r = self._dispatch_cmd(["sc", "query", name], capture_output=True, text=True, timeout=30)
         if r.returncode != 0:
             return {"success": False, "error": f"Service '{name}' not found"}
         status_m = re.search(r"STATE\s*:\s*\d+\s+(\w+)", r.stdout)
@@ -1048,7 +1048,7 @@ class SystemAgent(BaseAgent):
         """Export registry key to .reg file using regedit."""
         if not IS_WINDOWS:
             return {"success": False, "error": "Registry only on Windows"}
-        r = subprocess.run(
+        r = self._dispatch_cmd(
             ["regedit", "/E", output_file, key_path],
             capture_output=True, text=True, timeout=30,
         )
@@ -1086,7 +1086,7 @@ class SystemAgent(BaseAgent):
         os.environ[var] = value
         if persistent:
             if IS_WINDOWS:
-                r = subprocess.run(["setx", var, value],
+                r = self._dispatch_cmd(["setx", var, value],
                                    capture_output=True, text=True, timeout=30)
                 return {"success": r.returncode == 0, "variable": var}
             else:
@@ -1207,14 +1207,14 @@ class SystemAgent(BaseAgent):
     def scan_wifi(self) -> Dict:
         """Scan for available WiFi networks."""
         def _scan_win():
-            r = subprocess.run(["netsh", "wlan", "show", "networks", "mode=Bssid"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["netsh", "wlan", "show", "networks", "mode=Bssid"], capture_output=True, text=True, timeout=30)
             ssids = re.findall(r"SSID\s+:\s+(.+)", r.stdout)
             signals = re.findall(r"Signal\s+:\s+(\d+)%", r.stdout)
             networks = [{"ssid": s.strip(), "signal_pct": int(sig)} for s, sig in zip(ssids, signals)]
             return {"success": True, "networks": networks, "count": len(networks)}
 
         def _scan_linux():
-            r = subprocess.run(["nmcli", "-t", "-f", "SSID,SIGNAL", "dev", "wifi"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["nmcli", "-t", "-f", "SSID,SIGNAL", "dev", "wifi"], capture_output=True, text=True, timeout=30)
             networks = []
             for line in r.stdout.splitlines():
                 parts = line.split(":")
@@ -1249,14 +1249,14 @@ class SystemAgent(BaseAgent):
     def get_wifi_networks(self) -> Dict:
         """List visible WiFi networks."""
         def _get_win():
-            r = subprocess.run(["netsh", "wlan", "show", "networks", "mode=Bssid"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["netsh", "wlan", "show", "networks", "mode=Bssid"], capture_output=True, text=True, timeout=30)
             ssids = re.findall(r"SSID\s+:\s+(.+)", r.stdout)
             signals = re.findall(r"Signal\s+:\s+(\d+)%", r.stdout)
             networks = [{"ssid": s.strip(), "signal_pct": int(sig)} for s, sig in zip(ssids, signals)]
             return {"success": True, "networks": networks, "count": len(networks)}
 
         def _get_linux():
-            r = subprocess.run(["nmcli", "-t", "-f", "SSID,SIGNAL", "dev", "wifi"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["nmcli", "-t", "-f", "SSID,SIGNAL", "dev", "wifi"], capture_output=True, text=True, timeout=30)
             networks = []
             for line in r.stdout.splitlines():
                 parts = line.split(":")
@@ -1385,7 +1385,7 @@ class SystemAgent(BaseAgent):
                     drives.append(letter)
             return {"success": True, "drives": drives}
         # Linux/Mac
-        r = subprocess.run(["df", "-h", "--output=target"], capture_output=True, text=True, timeout=30)
+        r = self._dispatch_cmd(["df", "-h", "--output=target"], capture_output=True, text=True, timeout=30)
         mounts = [l.strip() for l in r.stdout.splitlines()[1:] if l.strip()]
         return {"success": True, "mountpoints": mounts}
 
@@ -1411,7 +1411,7 @@ class SystemAgent(BaseAgent):
                 return {"success": True, "width": w, "height": h,
                         "resolution": f"{w}x{h}"}
             else:
-                r = subprocess.run(["xdpyinfo"], capture_output=True, text=True, timeout=30)
+                r = self._dispatch_cmd(["xdpyinfo"], capture_output=True, text=True, timeout=30)
                 m = re.search(r"dimensions:\s+(\d+)x(\d+)", r.stdout)
                 if m:
                     return {"success": True, "width": int(m.group(1)),
@@ -1446,7 +1446,7 @@ class SystemAgent(BaseAgent):
     def get_monitors(self) -> Dict:
         """Enumerate connected monitors."""
         def _get_win():
-            r = subprocess.run(
+            r = self._dispatch_cmd(
                 ["wmic", "desktopmonitor", "get",
                  "ScreenWidth,ScreenHeight,DeviceID,Status", "/format:csv"],
                 capture_output=True, text=True, timeout=30,
@@ -1454,7 +1454,7 @@ class SystemAgent(BaseAgent):
             return {"success": True, "raw": r.stdout}
             
         def _get_posix():
-            r = subprocess.run(["xrandr", "--query"], capture_output=True,
+            r = self._dispatch_cmd(["xrandr", "--query"], capture_output=True,
                                 text=True, timeout=30)
             monitors = re.findall(r"(\w+)\s+connected\s+([^\s]+)", r.stdout)
             return {
@@ -1492,7 +1492,7 @@ class SystemAgent(BaseAgent):
                 return {"success": r["success"], "output": r.get("stdout", "")}
 
         def _get_linux():
-            r = subprocess.run(["amixer", "get", "Master"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["amixer", "get", "Master"], capture_output=True, text=True, timeout=30)
             m = re.search(r"\[(\d+)%\]", r.stdout)
             return {"success": True, "volume": int(m.group(1)) if m else None}
 
@@ -1518,7 +1518,7 @@ class SystemAgent(BaseAgent):
             return {"success": r["success"], "level": level, "output": r.get("stdout", "")}
             
         def _set_linux():
-            r = subprocess.run(["amixer", "-q", "sset", "Master", f"{level}%"], capture_output=True, timeout=30)
+            r = self._dispatch_cmd(["amixer", "-q", "sset", "Master", f"{level}%"], capture_output=True, timeout=30)
             return {"success": r.returncode == 0, "level": level}
             
         _VOLUME_DISPATCH = {"windows": _set_win, "linux": _set_linux}
@@ -1530,7 +1530,7 @@ class SystemAgent(BaseAgent):
     def mute_audio(self) -> Dict:
         _MUTE_DISPATCH = {
             "windows": lambda: self.execute_powershell("(New-Object -ComObject Shell.Application) | % {$null}; $wsh = New-Object -ComObject WScript.Shell; $wsh.SendKeys([char]173)", timeout=5),
-            "linux":   lambda: subprocess.run(["amixer", "-q", "sset", "Master", "mute"], timeout=30),
+            "linux":   lambda: self._dispatch_cmd(["amixer", "-q", "sset", "Master", "mute"], timeout=30),
         }
         platform_key = "windows" if IS_WINDOWS else "linux" if IS_LINUX else "unknown"
         handler = _MUTE_DISPATCH.get(platform_key)
@@ -1542,7 +1542,7 @@ class SystemAgent(BaseAgent):
 
     def unmute_audio(self) -> Dict:
         _UNMUTE_DISPATCH = {
-            "linux": lambda: subprocess.run(["amixer", "-q", "sset", "Master", "unmute"], timeout=30),
+            "linux": lambda: self._dispatch_cmd(["amixer", "-q", "sset", "Master", "unmute"], timeout=30),
         }
         platform_key = "linux" if IS_LINUX else "unknown"
         handler = _UNMUTE_DISPATCH.get(platform_key)
@@ -1554,11 +1554,11 @@ class SystemAgent(BaseAgent):
     def get_audio_devices(self) -> Dict:
         """List audio playback and recording devices."""
         def _get_win():
-            r = subprocess.run(["wmic", "path", "win32_sounddevice", "get", "Name,Status,DeviceID", "/format:csv"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["wmic", "path", "win32_sounddevice", "get", "Name,Status,DeviceID", "/format:csv"], capture_output=True, text=True, timeout=30)
             return {"success": True, "raw": r.stdout}
 
         def _get_linux():
-            r = subprocess.run(["aplay", "-l"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["aplay", "-l"], capture_output=True, text=True, timeout=30)
             return {"success": True, "playback": r.stdout}
 
         _DEVICES_DISPATCH = {"windows": _get_win, "linux": _get_linux}
@@ -1585,11 +1585,11 @@ class SystemAgent(BaseAgent):
             return {"success": True, "text": text}
             
         def _get_linux():
-            r = subprocess.run(["xclip", "-selection", "clipboard", "-o"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["xclip", "-selection", "clipboard", "-o"], capture_output=True, text=True, timeout=30)
             return {"success": r.returncode == 0, "text": r.stdout}
             
         def _get_mac():
-            r = subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=30)
+            r = self._dispatch_cmd(["pbpaste"], capture_output=True, text=True, timeout=30)
             return {"success": True, "text": r.stdout}
             
         _CLIP_GET_DISPATCH = {"windows": _get_win, "linux": _get_linux, "mac": _get_mac}
@@ -1608,15 +1608,15 @@ class SystemAgent(BaseAgent):
     def set_clipboard(self, text: str) -> Dict:
         """Write text to clipboard."""
         def _set_win():
-            subprocess.run(["clip"], input=text, text=True, timeout=5)
+            self._dispatch_cmd(["clip"], input=text, text=True, timeout=5)
             return {"success": True, "chars_written": len(text)}
             
         def _set_linux():
-            r = subprocess.run(["xclip", "-selection", "clipboard"], input=text, text=True, timeout=5)
+            r = self._dispatch_cmd(["xclip", "-selection", "clipboard"], input=text, text=True, timeout=5)
             return {"success": r.returncode == 0}
             
         def _set_mac():
-            r = subprocess.run(["pbcopy"], input=text, text=True, timeout=30)
+            r = self._dispatch_cmd(["pbcopy"], input=text, text=True, timeout=30)
             return {"success": r.returncode == 0}
             
         _CLIP_SET_DISPATCH = {"windows": _set_win, "linux": _set_linux, "mac": _set_mac}
@@ -1665,12 +1665,12 @@ class SystemAgent(BaseAgent):
         def _notify_linux():
             cmd = ["notify-send", title, message, "-t", str(duration * 1000)]
             if icon: cmd += ["-i", icon]
-            r = subprocess.run(cmd, timeout=5)
+            r = self._dispatch_cmd(cmd, timeout=5)
             return {"success": r.returncode == 0}
 
         def _notify_mac():
             script = f'display notification "{message}" with title "{title}"'
-            r = subprocess.run(["osascript", "-e", script], timeout=10)
+            r = self._dispatch_cmd(["osascript", "-e", script], timeout=10)
             return {"success": r.returncode == 0}
 
         _NOTIFY_DISPATCH = {"windows": _notify_win, "linux": _notify_linux, "mac": _notify_mac}
@@ -1778,7 +1778,7 @@ class SystemAgent(BaseAgent):
         """List all Windows scheduled tasks."""
         if not IS_WINDOWS:
             return self.execute_command("crontab -l")
-        r = subprocess.run(
+        r = self._dispatch_cmd(
             ["schtasks", "/query", "/fo", "CSV", "/nh"],
             capture_output=True, text=True, timeout=20,
         )
@@ -2029,12 +2029,12 @@ class SystemAgent(BaseAgent):
 
         def _lock_linux():
             for cmd in [["gnome-screensaver-command", "--lock"], ["xdg-screensaver", "lock"], ["loginctl", "lock-session"]]:
-                r = subprocess.run(cmd, timeout=5)
+                r = self._dispatch_cmd(cmd, timeout=5)
                 if r.returncode == 0: return {"success": True, "method": cmd}
             return {"success": False, "error": "Linux lock failed"}
 
         def _lock_mac():
-            r = subprocess.run(["/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession", "-suspend"], timeout=5)
+            r = self._dispatch_cmd(["/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession", "-suspend"], timeout=5)
             return {"success": r.returncode == 0}
 
         _LOCK_DISPATCH = {"windows": _lock_win, "linux": _lock_linux, "mac": _lock_mac}
@@ -2076,7 +2076,7 @@ class SystemAgent(BaseAgent):
             return {"success": True, "fonts": sorted(fonts), "count": len(fonts)}
 
         def _get_linux():
-            r = subprocess.run(["fc-list"], capture_output=True, text=True, timeout=10)
+            r = self._dispatch_cmd(["fc-list"], capture_output=True, text=True, timeout=10)
             return {"success": True, "output": r.stdout, "count": len(r.stdout.splitlines())}
 
         _FONTS_DISPATCH = {"windows": _get_win, "linux": _get_linux}
