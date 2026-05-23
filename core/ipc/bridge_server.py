@@ -12,6 +12,7 @@ Key guarantees:
 
 import asyncio
 import json
+import time
 import uuid
 import random
 import logging
@@ -289,7 +290,7 @@ class BridgeServer:
             "sequence_id": seq,
             "causal_parent_id": causal_parent_id,
             "payload": payload or {},
-            "timestamp": asyncio.get_event_loop().time(),
+            "timestamp": time.time(),  # L6-B: real Unix timestamp, not monotonic loop counter
             "msg_id": mid,
             "correlation_id": correlation_id or str(uuid.uuid4()),
         }

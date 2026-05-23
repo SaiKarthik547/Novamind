@@ -129,6 +129,10 @@ class BinaryTransport(ABC):
             self._out_seq += 1
             
         try:
+            # L0-E: Guard against None payload before mutation.
+            if payload is None:
+                logger.warning("[Transport] send_message called with None payload — injecting empty dict.")
+                payload = {}
             payload["event_type"] = event_type  # Inject into payload for now to match old semantic
             self._writer.write_frame(
                 msg_type=msg_type,

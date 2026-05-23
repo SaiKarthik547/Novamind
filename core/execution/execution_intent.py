@@ -1,7 +1,8 @@
+from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 class IntentStatus(Enum):
     PENDING = "PENDING"
@@ -40,28 +41,48 @@ class ExecutionIntent:
     The boundary between Agent Intelligence and Kernel Execution.
     Agents emit Intents. They DO NOT execute them.
     Intents are serializable, replayable, and schedulable.
+
+    L2-A: Expanded with full kernel convergence fields.
     """
     adapter: str             # e.g., 'process', 'filesystem', 'registry'
     operation: str           # e.g., 'spawn', 'write_file', 'set_key'
     idempotent: bool         # Mandatory declaration for replay safety
-    
+
     verification_mode: VerificationMode
     rollback_strategy: RollbackMode
     capability_scope: Dict[str, Any]
     payload: Dict[str, Any]
-    
+
     intent_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     agent_id: str = "UNKNOWN"
     status: IntentStatus = IntentStatus.PENDING
-    
+
     # Scheduling & Determinism
     priority: IntentPriority = IntentPriority.STANDARD
     determinism: IntentDeterminismLevel = IntentDeterminismLevel.PROBABILISTIC
     timeout_ms: int = 30000
-    
+
     # Results
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+    # ── L2-A: Kernel Convergence Fields ──────────────────────────────────────
+    # Causation lineage — required for WAL replay integrity
+    parent_intent_id: Optional[str] = None
+    causation_chain: List[str] = field(default_factory=list)
+
+    # Capability routing
+    capability_domain: str = ""               # e.g. 'filesystem', 'process', 'ui'
+    determinism_class: str = "SEMI_DETERMINISTIC"  # DETERMINISTIC | SEMI_DETERMINISTIC | NON_DETERMINISTIC
+    replay_policy: str = "STRUCTURAL"         # STRICT | STRUCTURAL | OBSERVATIONAL | SKIP
+    side_effect_level: str = "PERMANENT"      # PERMANENT | TRANSIENT | NONE
+
+    # Authority tracking — audit trail for convergence migration
+    authority_origin: str = "legacy_bridge"   # 'kernel' | 'legacy_bridge' | 'unsafe_runtime'
+
+    # Concurrency safety
+    commutative: bool = False                  # True = safe for parallel execution
+    exclusive_resource_locks: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -79,5 +100,15 @@ class ExecutionIntent:
             "determinism": self.determinism.value,
             "timeout_ms": self.timeout_ms,
             "result": self.result,
-            "error": self.error
+            "error": self.error,
+            # L2-A: Kernel convergence fields
+            "parent_intent_id": self.parent_intent_id,
+            "causation_chain": self.causation_chain,
+            "capability_domain": self.capability_domain,
+            "determinism_class": self.determinism_class,
+            "replay_policy": self.replay_policy,
+            "side_effect_level": self.side_effect_level,
+            "authority_origin": self.authority_origin,
+            "commutative": self.commutative,
+            "exclusive_resource_locks": self.exclusive_resource_locks,
         }

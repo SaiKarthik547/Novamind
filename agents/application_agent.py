@@ -18,18 +18,11 @@ import io
 import json
 import math
 import os
-
-# --- Phase 10.5 Capability Shim ---
-import sys as _sys
-class _ModuleShim:
-    def __init__(self, mod_name): self._mod_name = mod_name
-    def __getattr__(self, name): return getattr(__import__(self._mod_name), name)
-subprocess = _ModuleShim('subprocess')
-shutil = _ModuleShim('shutil')
-socket = _ModuleShim('socket')
-# ----------------------------------
 import platform
 import re
+import shutil    # L3-5: Real import — _ModuleShim removed
+import socket    # L3-5: Real import — _ModuleShim removed
+import subprocess  # L3-5: ApplicationAgent uses subprocess only as last-resort shell launcher
 import threading
 import time
 import logging
@@ -644,7 +637,8 @@ class ApplicationAgent(BaseAgent):
                     try:
                         pyautogui.press("escape")
                         time.sleep(0.3)
-                    except Exception: pass
+                    except Exception as e:
+                        logger.debug(f"[AppAgent] escape key after replan failed: {e}")
                 time.sleep(0.5)
 
         total_ok   = sum(1 for s in steps_done if s["result"].get("success"))
@@ -774,8 +768,10 @@ Choose next action (JSON):
         try:
             return handler(plan)
         except Exception as e:
-            try: pyautogui.mouseUp()
-            except: pass
+            try:
+                pyautogui.mouseUp()
+            except Exception as e2:
+                logger.debug(f"[AppAgent] mouseUp after action failure also failed: {e2}")
             return {"success": False, "error": str(e), "action": action}
 
     # ── SMART ELEMENT ACTIONS ────────────────────────────────────────────────
@@ -842,7 +838,8 @@ Choose next action (JSON):
             try:
                 loc = pyautogui.locateCenterOnScreen(image_path, confidence=confidence)
                 if loc: return {"success": True, "x": loc.x, "y": loc.y}
-            except: pass
+            except Exception as e:
+                logger.debug(f"[AppAgent] locateCenterOnScreen failed: {e}")
             time.sleep(0.5)
         return {"success": False, "error": "Not found"}
 
@@ -903,15 +900,20 @@ Choose next action (JSON):
             if PYGETWINDOW_OK:
                 wins = [w for w in gw.getAllWindows() if title_hint.lower() in w.title.lower() and w.visible]
                 if wins:
-                    try: wins[0].activate()
-                    except: pass
+                    try:
+                        wins[0].activate()
+                    except Exception as e:
+                        logger.debug(f"[AppAgent] window activate failed: {e}")
                     return {"success": True, "title": wins[0].title}
             time.sleep(0.35)
         return {"success": False, "error": "Timeout"}
 
     def _grab_screenshot(self) -> Optional[Any]:
-        try: return pyautogui.screenshot()
-        except: return None
+        try:
+            return pyautogui.screenshot()
+        except Exception as e:
+            logger.debug(f"[AppAgent] screenshot grab failed: {e}")
+            return None
 
     def _image_diff_pct(self, img_a, img_b) -> float:
         if not PIL_OK or not NUMPY_OK or img_a is None or img_b is None: return 100.0
@@ -919,7 +921,9 @@ Choose next action (JSON):
             a, b = np.array(img_a.convert("L")), np.array(img_b.convert("L"))
             if a.shape != b.shape: return 100.0
             return float((np.abs(a - b) > 10).sum() / a.size * 100.0)
-        except: return 100.0
+        except Exception as e:
+            logger.debug(f"[AppAgent] image diff failed: {e}")
+            return 100.0
 
     def _wait_for_screen_change(self, timeout: float = 5.0, threshold_pct: float = 0.3) -> bool:
         baseline = self._grab_screenshot()
@@ -967,18 +971,23 @@ Choose next action (JSON):
             try:
                 safe_type(ch, self._get_active_window_title(), interval=0.0)
                 time.sleep(random.uniform(0.04, 0.12))
-            except: pass
+            except Exception as e:
+                logger.debug(f"[AppAgent] human_type char '{ch}' failed: {e}")
 
     def _read_screen_ocr(self) -> str:
         if TESSERACT_OK:
-            try: return pytesseract.image_to_string(pyautogui.screenshot())
-            except: pass
+            try:
+                return pytesseract.image_to_string(pyautogui.screenshot())
+            except Exception as e:
+                logger.debug(f"[AppAgent] OCR failed: {e}")
         return ""
 
     def _get_active_title(self) -> str:
         if PYGETWINDOW_OK:
-            try: return gw.getActiveWindow().title
-            except: pass
+            try:
+                return gw.getActiveWindow().title
+            except Exception as e:
+                logger.debug(f"[AppAgent] getActiveWindow failed: {e}")
         return ""
 
     def _micro_sleep(self, lo: float, hi: float):

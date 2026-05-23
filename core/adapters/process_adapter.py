@@ -81,11 +81,16 @@ class ProcessAdapter(ApplicationAdapter):
             return result
         except subprocess.TimeoutExpired as e:
             self._state = AdapterState.ATTACHED
+            # L0-D: text=True means stdout/stderr may already be str; guard both cases.
+            def _decode(v) -> str | None:
+                if v is None:
+                    return None
+                return v if isinstance(v, str) else v.decode(errors="replace")
             return {
                 "error": "TIMEOUT",
                 "returncode": -1,
-                "stdout": e.stdout.decode() if e.stdout else None,
-                "stderr": e.stderr.decode() if e.stderr else None,
+                "stdout": _decode(e.stdout),
+                "stderr": _decode(e.stderr),
                 "duration_ms": int((time.time() - start_time) * 1000)
             }
         except Exception as e:

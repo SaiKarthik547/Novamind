@@ -17,17 +17,9 @@ import json
 import logging
 import mimetypes
 import os
-
-# --- Phase 10.5 Capability Shim ---
-import sys as _sys
-class _ModuleShim:
-    def __init__(self, mod_name): self._mod_name = mod_name
-    def __getattr__(self, name): return getattr(__import__(self._mod_name), name)
-subprocess = _ModuleShim('subprocess')
-shutil = _ModuleShim('shutil')
-socket = _ModuleShim('socket')
-# ----------------------------------
 import re
+import shutil   # L3-1: Real import — _ModuleShim removed
+import socket   # L3-1: Real import — _ModuleShim removed
 import stat
 import struct
 import tempfile
@@ -102,6 +94,9 @@ MAGIC_SIGNATURES: List[Tuple[bytes, str, str]] = [
 
 class FileAgent(BaseAgent):
     """
+    # L3-1: _ModuleShim removed. shutil and socket are real stdlib imports.
+    # subprocess authority is now kernel-managed via KernelExecutionFacade.
+    # All file I/O via pathlib/os remains acceptable (not execution authority).
     Complete OS file system agent.
     Includes search, diffs, permissions, archiving, and watchers.
     """

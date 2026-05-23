@@ -149,6 +149,7 @@ class NovaMindApp:
         self.verifier       = None
         self.recovery_agent = None
         self.supervisor     = None
+        self.game           = None  # L0-B: Prevents AttributeError in _on_game_task_update
         self.agent_registry_valid = False
 
         # Godot Ecosystem Components
@@ -225,8 +226,8 @@ class NovaMindApp:
             log_dir.mkdir(parents=True, exist_ok=True)
             self.event_recorder = EventRecorder(log_path=str(log_dir / f"session_{self.session_id}.jsonl"))
             
-            # Supervisor is the ultimate authority for Auditor violations
-            self.supervisor = RuntimeSupervisor(
+            # L0-A: KernelSupervisor is the correct class (RuntimeSupervisor was a NameError)
+            self.supervisor = KernelSupervisor(
                 event_bus=self.event_bus,
                 event_recorder=self.event_recorder
             )

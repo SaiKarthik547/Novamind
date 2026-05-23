@@ -10,19 +10,12 @@ import ctypes
 import json
 import logging
 import os
-
-# --- Phase 10.5 Capability Shim ---
-import sys as _sys
-class _ModuleShim:
-    def __init__(self, mod_name): self._mod_name = mod_name
-    def __getattr__(self, name): return getattr(__import__(self._mod_name), name)
-subprocess = _ModuleShim('subprocess')
-shutil = _ModuleShim('shutil')
-socket = _ModuleShim('socket')
-# ----------------------------------
 import platform
 import re
+import shutil    # L3-2: Real import — _ModuleShim removed
 import signal
+import socket    # L3-2: Real import — _ModuleShim removed
+import subprocess  # L3-2: SystemAgent is a legitimate execution adapter
 import sys
 import tempfile
 import time
@@ -468,8 +461,8 @@ class SystemAgent(BaseAgent):
                             info["model"]        = parts[2]
                             ram = int(parts[3]) if parts[3].isdigit() else 0
                             info["ram_total_gb"] = round(ram / (1024**3), 2)
-            except Exception:
-                pass
+            except OSError as e:
+                logger.warning(f"[SystemAgent] wmic query failed: {e}")
 
         return info
 
@@ -597,7 +590,8 @@ class SystemAgent(BaseAgent):
                 info["memory"] = r2.stdout.strip()
                 r3 = self._dispatch_cmd(["lspci"], capture_output=True, text=True, timeout=30)
                 info["gpu"] = "\n".join(l for l in r3.stdout.splitlines() if "vga" in l.lower()).strip()
-            except Exception: pass
+            except OSError as e:
+                logger.warning(f"[SystemAgent] lscpu/lspci failed: {e}")
 
         _HW_DISPATCH = {
             "windows": _get_win,
@@ -1598,8 +1592,9 @@ class SystemAgent(BaseAgent):
         handler = _CLIP_GET_DISPATCH.get(platform_key)
         if handler:
             try: return handler()
-            except Exception: pass
-            
+            except Exception as e:
+                logger.warning(f"[SystemAgent] clipboard native read failed: {e}")
+
         try:
             import pyperclip
             return {"success": True, "text": pyperclip.paste()}
@@ -1624,9 +1619,11 @@ class SystemAgent(BaseAgent):
         platform_key = "windows" if IS_WINDOWS else "linux" if IS_LINUX else "mac" if IS_MAC else "unknown"
         handler = _CLIP_SET_DISPATCH.get(platform_key)
         if handler:
-            try: return handler()
-            except Exception: pass
-            
+            try:
+                return handler()
+            except Exception as e:
+                logger.warning(f"[SystemAgent] clipboard set via {platform_key} failed: {e}")
+
         try:
             import pyperclip
             pyperclip.copy(text)
@@ -2053,7 +2050,8 @@ class SystemAgent(BaseAgent):
             try:
                 apps = json.loads(r.get("stdout", "[]") or "[]")
                 if isinstance(apps, dict): apps = [apps]
-            except Exception: pass
+            except json.JSONDecodeError as e:
+                logger.warning(f"[SystemAgent] Could not parse installed apps JSON: {e}")
             if search:
                 apps = [a for a in apps if search.lower() in (a.get("DisplayName") or "").lower()]
             return {"success": True, "apps": apps[:limit], "count": len(apps)}

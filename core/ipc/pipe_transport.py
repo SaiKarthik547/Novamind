@@ -131,8 +131,10 @@ class PipeTransport(BinaryTransport):
                 break
                 
             try:
-                # Peek to see if data is available before blocking
-                avail, total_msg, left_msg = win32pipe.PeekNamedPipe(self._pipe_handle, 0)
+                # Peek to see if data is available before blocking.
+                # PeekNamedPipe returns (data_bytes, bytes_available, bytes_left_in_message).
+                # 'data_bytes' is discarded — we only need the integer count 'avail'.
+                _peek_data, avail, _left_msg = win32pipe.PeekNamedPipe(self._pipe_handle, 0)
                 if avail > 0:
                     read_len = min(n - len(buf), avail)
                     hr, data = win32file.ReadFile(self._pipe_handle, read_len)

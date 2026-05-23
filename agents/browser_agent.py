@@ -2,21 +2,15 @@
 Browser Agent - Web automation and browser control
 Open URLs, search web, extract content, fill forms
 """
+import logging
 import os
-
-# --- Phase 10.5 Capability Shim ---
-import sys as _sys
-class _ModuleShim:
-    def __init__(self, mod_name): self._mod_name = mod_name
-    def __getattr__(self, name): return getattr(__import__(self._mod_name), name)
-subprocess = _ModuleShim('subprocess')
-shutil = _ModuleShim('shutil')
-socket = _ModuleShim('socket')
-# ----------------------------------
 import re
+import shutil   # L3.5: Real import — _ModuleShim removed
+import socket   # L3.5: Real import — _ModuleShim removed
+# L3.5: subprocess is NOT imported here — BrowserAgent is NON_DETERMINISTIC/UI.
+# Any subprocess needs must route through kernel via ShellWorker + KernelExecutionFacade.
 import time
 import json
-import logging
 import tempfile
 import urllib.request
 import urllib.parse
@@ -127,7 +121,8 @@ class BrowserAgent(BaseAgent):
             }
             try:
                 browser_controller = _get_controller.get(browser != "default", lambda: None)()
-            except:
+            except Exception as e:
+                logger.debug(f"[BrowserAgent] Custom browser controller failed: {e}")
                 browser_controller = None
 
             _open_fn = {
@@ -223,7 +218,8 @@ class BrowserAgent(BaseAgent):
             try:
                 extractor.feed(content)
                 text = extractor.get_text()
-            except:
+            except Exception as e:
+                logger.debug(f"[BrowserAgent] HTML parse failed, stripping tags: {e}")
                 text = re.sub('<[^<]+?>', '', content)  # Fallback strip tags
 
             # Extract links
@@ -422,13 +418,14 @@ class BrowserAgent(BaseAgent):
                         }
                         _FILL_DEFAULT = lambda p, s, v: p.fill(s, v)
                         for strategy in ['placeholder', 'label', 'name', 'id', 'css']:
-                            try:
-                                _FILL_DISPATCH.get(
-                                    strategy, _FILL_DEFAULT)(page, selector, value)
-                                filled.append(selector)
-                                break
-                            except:
-                                continue
+                                try:
+                                    _FILL_DISPATCH.get(
+                                        strategy, _FILL_DEFAULT)(page, selector, value)
+                                    filled.append(selector)
+                                    break
+                                except Exception as e:
+                                    logger.debug(f"[BrowserAgent] Fill strategy '{strategy}' failed: {e}")
+                                    continue
                     except Exception as e:
                         logger.warning(f"Could not fill field {selector}: {e}")
 

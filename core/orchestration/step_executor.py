@@ -28,7 +28,12 @@ except ImportError:
     OS_EXECUTOR_OK = False
     FocusLostError = Exception
 
-    class ActionVerifier:
+    class ActionVerifier:  # type: ignore[no-redef]
+        """
+        L1-D: NullVerifier — explicit failure stub.
+        When os_executor is unavailable, verification MUST fail loudly.
+        Returning True here is a hallucination that destroys replay trust.
+        """
         def __init__(self, region=None):
             self.region = region
         def __enter__(self):
@@ -36,9 +41,17 @@ except ImportError:
         def __exit__(self, exc_type, exc_val, exc_tb):
             return False
         def verify_changed(self, desc: str = "") -> bool:
-            return True
+            logger.warning(
+                f"[StepExecutor] NullVerifier: os_executor unavailable. "
+                f"Verification for '{desc}' is INCONCLUSIVE — returning False."
+            )
+            return False  # NEVER return True when we cannot actually verify.
         def verify_unchanged(self, desc: str = "") -> bool:
-            return True
+            logger.warning(
+                f"[StepExecutor] NullVerifier: os_executor unavailable. "
+                f"verify_unchanged for '{desc}' is INCONCLUSIVE — returning False."
+            )
+            return False
 
 
 @dataclass

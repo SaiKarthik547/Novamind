@@ -68,6 +68,12 @@ class ParallelExecutionEngine:
         """
         Execute a DAG of tasks with full parallel dispatch.
         Returns dict with completed/failed sets and per-task results.
+
+        L4-B: CONCURRENCY RULE \u2014 non-commutative intents MUST be serialized.
+        Only intents with commutative=True may run in parallel.
+        See core/execution/kernel_facade.py for the enforcement point.
+        TaskNodes that touch the same resource (GUI, filesystem path, process tree)
+        must declare exclusive_resource_locks and be serialized by the kernel.
         """
         task_map: Dict[str, TaskNode] = {t.id: t for t in task_dag}
         results: Dict[str, Any] = {}

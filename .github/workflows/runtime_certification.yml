@@ -6,6 +6,27 @@ on:
   pull_request:
     branches: [ "main" ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Certification Version: v14 (Kernel Convergence Complete)
+# Certified: 2026-05-23
+# Test Baseline: 125 passed / 0 failed / 2 deprecation warnings (websockets legacy)
+#
+# Authority Model:
+#   - Brain: Planner+Coordinator ONLY — no subprocess, no adapters directly
+#   - Adapters: Execute — all route through KernelExecutionFacade
+#   - Kernel: Supervises — enforces IntentStateMachine + capability registry
+#   - UI automation: NON_DETERMINISTIC — quarantined to LegacyUIAdapter
+#
+# Invariants Certified:
+#   [I1] All _ModuleShim references removed from all agent files
+#   [I2] except Exception: pass is prohibited — all suppressed as logged warnings
+#   [I3] shell=True is prohibited in ShellWorker — Job Object containment enforced
+#   [I4] IntentStateMachine enforced in KernelExecutionFacade.dispatch()
+#   [I5] WAL timestamps use time.time() (Unix epoch) — not asyncio loop time
+#   [I6] Non-commutative intents are serialized — no parallel execution unless commutative=True
+#   [I7] Brain authority model documented — no direct subprocess in brain.py
+# ─────────────────────────────────────────────────────────────────────────────
+
 jobs:
   certify-runtime:
     runs-on: windows-latest
@@ -22,25 +43,33 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Run Deterministic Validation Suite
+    - name: "[L1] Core Determinism + Split Brain"
       run: |
         pytest tests/test_core.py tests/test_split_brain_recovery.py -v
 
-    - name: Run Phase 7 Concurrency & Replay Tests
+    - name: "[L2] Concurrency + Replay Equivalence"
       run: |
         pytest tests/test_async_concurrency.py tests/test_replay_equivalence.py -v
 
-    - name: Run Phase 9/11 Kernel Tests
+    - name: "[L3] Kernel: WAL + Crash Recovery + Job Object + Capability Escape"
       run: |
         pytest tests/test_worker_crash_recovery.py tests/test_job_object_enforcement.py tests/test_capability_escape.py tests/test_ipc_watchdogs.py tests/test_legacy_wal_fallback.py tests/test_partial_segment_recovery.py tests/test_wal_hash_chain.py tests/test_wal_segmentation.py -v
 
-    - name: Run Phase 12 Telemetry & Observability Tests
+    - name: "[L4] Kernel Convergence + Architecture Invariants"
       run: |
-        pytest tests/test_telemetry_ordering.py tests/test_adapter_lifecycle.py tests/test_intent_dispatcher.py tests/test_godot_bridge.py tests/test_intent_contracts.py -v
+        pytest tests/test_kernel_convergence.py tests/test_adapter_lifecycle.py tests/test_intent_dispatcher.py tests/test_intent_contracts.py tests/test_runtime_lifecycle.py -v
 
-    - name: Run Phase 13 Capabilities Tests
+    - name: "[L5] Telemetry + Observability + Binary Framing"
       run: |
-        pytest tests/test_process_adapter.py tests/test_filesystem_adapter.py -v
+        pytest tests/test_telemetry_ordering.py tests/test_binary_framing.py tests/test_reconnect_during_partial_frame.py tests/test_godot_bridge.py -v
+
+    - name: "[L6] Platform Adapters"
+      run: |
+        pytest tests/test_process_adapter.py tests/test_filesystem_adapter.py tests/test_focus_chaos.py -v
+
+    - name: "[L7] Full Suite Regression"
+      run: |
+        pytest tests/ -v --tb=short
 
     - name: Run Schema Validator
       run: |

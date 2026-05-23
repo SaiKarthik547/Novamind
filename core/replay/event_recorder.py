@@ -20,7 +20,18 @@ class EventRecorder:
     Uses EventStorageCodec to encode events safely.
     Maintains a manifest.json tracking lineage across segments.
     """
-    def __init__(self, log_dir: str = None, session_id: str = None):
+    def __init__(self, log_dir: str = None, session_id: str = None, log_path: str = None):
+        # L2-C: log_path compatibility — main.py may pass log_path instead of log_dir/session_id
+        if log_path is not None:
+            from pathlib import Path as _Path
+            _lp = _Path(log_path)
+            if log_dir is None:
+                log_dir = str(_lp.parent)
+            if session_id is None:
+                # Strip 'session_' prefix if present
+                stem = _lp.stem
+                session_id = stem[len("session_"):] if stem.startswith("session_") else stem
+
         self.session_id = session_id or str(uuid.uuid4())
         base_dir = Path(log_dir) if log_dir else Path("runtime/logs")
         self.session_dir = base_dir / f"session_{self.session_id}"
@@ -127,12 +138,50 @@ class EventRecorder:
             "msg_id": msg_id or str(uuid.uuid4()),
             "payload": payload
         }
-        
+
         try:
             loop = asyncio.get_running_loop()
             loop.call_soon_threadsafe(self._queue.put_nowait, event)
         except RuntimeError:
             self._write_to_disk(event)
+
+    def log_intent_event(
+        self,
+        lifecycle_event: str,
+        intent_id: str,
+        capability: str,
+        authority_origin: str,
+        determinism_class: str,
+        payload_summary: dict = None,
+        error: str = None,
+        parent_intent_id: str = None,
+    ):
+        """
+        L2-C: WAL lifecycle event for ExecutionIntents.
+        These events are AUTHORITATIVE — recovery and replay key off them.
+        They are SEPARATE from generic log_event telemetry.
+
+        Lifecycle events: INTENT_CREATED, INTENT_DISPATCHED, INTENT_RUNNING,
+        INTENT_VERIFYING, INTENT_COMPLETED, INTENT_FAILED, INTENT_COMPENSATING,
+        INTENT_COMPENSATED, INTENT_ABORTED, INTENT_REJECTED.
+        """
+        _terminal_errors = {"INTENT_FAILED", "INTENT_ABORTED", "INTENT_REJECTED", "INTENT_COMPENSATING"}
+        severity = "ERROR" if lifecycle_event in _terminal_errors else "INFO"
+        self.log_event(
+            event_type=lifecycle_event,
+            source_runtime="KERNEL_INTENT",
+            severity=severity,
+            payload={
+                "intent_id": intent_id,
+                "parent_intent_id": parent_intent_id,
+                "capability": capability,
+                "authority_origin": authority_origin,
+                "determinism_class": determinism_class,
+                "payload_summary": payload_summary or {},
+                "error": error,
+            },
+            correlation_id=intent_id,
+        )
 
     async def _process_queue(self):
         """Background coroutine that pulls from the queue and writes to disk."""

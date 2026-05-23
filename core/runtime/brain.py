@@ -26,6 +26,11 @@ from core.orchestration.parallel_engine import ParallelExecutionEngine, TaskNode
 from core.runtime.agent_context import AgentContext
 from core.runtime.kernel_supervisor import KernelSupervisor
 
+# L4-A: Brain is Planner+Coordinator only. No direct execution permitted.
+# Brain NEVER calls subprocess, os.system, or adapters directly.
+# All execution routes through KernelExecutionFacade via the IntentDispatcher.
+# Any agent that directly imports subprocess is in violation of the authority model.
+
 logger = logging.getLogger("Brain")
 
 
@@ -568,6 +573,10 @@ class Brain:
         """
         O(1) dict-lookup agent dispatch — no if-elif routing chain.
         Truly zero if/else branching with valid syntax.
+
+        L4-A: Brain coordinates agents. Agents produce ExecutionIntents.
+        Brain NEVER calls subprocess, os.system, or adapters directly.
+        All execution routes through KernelExecutionFacade via the IntentDispatcher.
         """
         agent_obj = self.agents.get(step.agent)
         
