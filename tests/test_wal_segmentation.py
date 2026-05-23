@@ -38,7 +38,7 @@ async def test_wal_segmentation_on_commit(session_dir):
     # Replay across segments
     engine = ReplayEngine(mode=ReplayMode.STRICT)
     class MockBus:
-        def publish(self, e): pass
+        def publish(self, e): """Implementation stub"""
     
     success = await engine.execute_recovery(None, actual_session_dir, MockBus())
     assert success is True

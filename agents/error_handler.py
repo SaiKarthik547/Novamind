@@ -361,7 +361,8 @@ def _extract_json_safe(text: str) -> Dict:
         m = re.search(r'\{.*\}', text, re.DOTALL)
         if m:
             return json.loads(m.group())
-    except Exception:
+    except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         pass
     return {
         "error_type": "unknown",

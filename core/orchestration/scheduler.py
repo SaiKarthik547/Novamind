@@ -338,5 +338,6 @@ class TaskScheduler:
         for fn in self._callbacks:
             try:
                 fn(snapshot)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass

@@ -10,10 +10,10 @@ class DummyTransport(BinaryTransport):
         self.out_buffer = b""
         
     def _connect_impl(self):
-        pass
+        """Implementation stub"""
         
     def _disconnect_impl(self):
-        pass
+        """Implementation stub"""
         
     def _read_bytes(self, n, timeout):
         start = time.time()
@@ -29,7 +29,7 @@ class DummyTransport(BinaryTransport):
         self.out_buffer += data
         
     def _flush(self):
-        pass
+        """Implementation stub"""
 
 def test_stale_heartbeat_rejection():
     # Construct a dummy transport

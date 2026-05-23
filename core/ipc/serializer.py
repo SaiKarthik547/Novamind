@@ -15,7 +15,7 @@ from typing import Any
 
 
 class SerializationError(Exception):
-    pass
+    """Implementation stub"""
 
 
 def _validate_schema(obj: Any, path: str = "$") -> None:

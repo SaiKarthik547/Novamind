@@ -136,8 +136,8 @@ def _safe_mouseup() -> None:
     try:
         import pyautogui
         pyautogui.mouseUp()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"pyautogui mouseUp failed: {e}")
 
 
 class Brain:
@@ -612,6 +612,7 @@ class Brain:
                     else:
                         result_box[0] = agent_obj.execute(context)
                 except Exception as exc:
+                    logger.debug(f"Agent execution raised exception: {exc}")
                     exc_box[0] = exc
 
             _executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -706,14 +707,14 @@ class Brain:
                 aw = self.vision.get_active_window_title()
                 if aw.get("success"):
                     ctx["active_window"] = aw.get("title", "")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to enrich context with vision: {e}")
         if self.memory:
             try:
                 ctx["past_experiences"] = \
                     self.memory.find_similar_experiences(user_request, limit=3)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Failed to enrich context with memory: {e}")
         return ctx
 
     def _record_task_start(self, exec_: TaskExecution) -> None:
@@ -744,7 +745,8 @@ class Brain:
                 action=step.action,
                 parameters=step.parameters,
             )
-        except Exception:
+        except Exception as e:
+            logger.debug(f"record_step_start failed: {e}")
             return None
 
     def _record_step_end(self, exec_: TaskExecution, step: TaskStep,
@@ -891,13 +893,13 @@ class Brain:
         for fn in self._task_callbacks:
             try:
                 fn(d)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Callback fn failed: {e}")
         if exec_.on_status_update:
             try:
                 exec_.on_status_update(d)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"on_status_update callback failed: {e}")
 
     # ──────────────────────────────────────────────────────────────────────────
     #  Serialisation

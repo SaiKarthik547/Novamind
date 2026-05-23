@@ -21,7 +21,7 @@ class WalState(Enum):
 
 
 class WalCorruptionError(Exception):
-    pass
+    """Implementation stub"""
 
 
 class EffectWal:

@@ -21,7 +21,7 @@ HEARTBEAT_TIMEOUT = 15.0
 
 
 class TransportError(Exception):
-    pass
+    """Implementation stub"""
 
 
 class BinaryTransport(ABC):
@@ -48,23 +48,23 @@ class BinaryTransport(ABC):
 
     @abstractmethod
     def _connect_impl(self) -> None:
-        pass
+        """Implementation stub"""
 
     @abstractmethod
     def _disconnect_impl(self) -> None:
-        pass
+        """Implementation stub"""
 
     @abstractmethod
     def _read_bytes(self, n: int, timeout: float) -> bytes:
-        pass
+        """Implementation stub"""
 
     @abstractmethod
     def _write_bytes(self, data: bytes) -> None:
-        pass
+        """Implementation stub"""
 
     @abstractmethod
     def _flush(self) -> None:
-        pass
+        """Implementation stub"""
 
     def _transition(self, new_state: TransportState) -> None:
         logger.info(f"[Transport] State change: {self.state.value} -> {new_state.value}")
@@ -241,7 +241,8 @@ class BinaryTransport(ABC):
                 try:
                     self.send_message(MessageType.HEARTBEAT, "PING", {"time": now})
                     self._last_heartbeat_tx_time = now
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     pass
             
             # Check receive timeout

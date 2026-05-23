@@ -15,6 +15,7 @@ def check_file(path, timeout=30):
     except subprocess.TimeoutExpired as e:
         return {"path": path, "status": "TIMEOUT", "error": f"timeout after {timeout}s"}
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         return {"path": path, "status": "ERROR", "error": str(e)}
     return {"path": path, "status": ("OK" if code == 0 else "ERROR"), "returncode": code, "stdout": out, "stderr": err}
 

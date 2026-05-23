@@ -99,8 +99,8 @@ def _detect_dpi() -> float:
         if awareness.value >= 1:
             logger.info(f"DPI-aware process detected (awareness={awareness.value}) — scale=1.0")
             return 1.0
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"GetProcessDpiAwareness failed: {e}")
     try:
         ctypes.windll.user32.SetProcessDPIAware()
         scale = max(0.5, ctypes.windll.shcore.GetScaleFactorForDevice(0) / 100.0)
@@ -156,8 +156,8 @@ def assert_window_focused(title_contains: str, max_wait: float = 2.0) -> bool:
             else:
                 if _try_activate_window(title_contains):
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Focus check iteration failed: {e}")
         time.sleep(0.1)
         
     raise FocusLostError(
@@ -178,8 +178,8 @@ def release_all_modifiers() -> None:
     for key in _MODIFIER_KEYS:
         try:
             pyautogui.keyUp(key)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Modifier release failed for {key}: {e}")
 
 
 # ── Canvas detection ──────────────────────────────────────────────────────────
@@ -218,7 +218,8 @@ def detect_paint_canvas() -> Optional[Tuple[int, int, int, int]]:
         
         canvas_top = _scan()
         return (max(0, wx_p + 4), max(0, wy_p + canvas_top), wx_p + ww_p - 4, wy_p + wh_p - 30)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Canvas detection failed: {e}")
         return None
 
 
@@ -426,8 +427,8 @@ def safe_mouseup() -> None:
         
     try:
         pyautogui.mouseUp()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug(f"safe_mouseup failed: {e}")
 
 
 # ── Screenshot verification ───────────────────────────────────────────────────
@@ -464,7 +465,8 @@ def images_differ(img1, img2, threshold: float = 0.005) -> bool:
         return (changed / a1.size) > threshold
     except ImportError:
         return img1.tobytes() != img2.tobytes()
-    except Exception:
+    except Exception as e:
+        logger.debug(f"images_differ failed: {e}")
         return True
 
 

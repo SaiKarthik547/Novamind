@@ -281,7 +281,8 @@ class DataAgent(BaseAgent):
         try:
             rows.sort(key=lambda r: self._coerce(r.get(column, "")),
                       reverse=not ascending)
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             rows.sort(key=lambda r: str(r.get(column, "")), reverse=not ascending)
 
         if output_path:
@@ -397,6 +398,7 @@ class DataAgent(BaseAgent):
                 return {"success": True, "path": path, "sheet": ws.title,
                         "rows": rows, "total": len(rows), "columns": headers}
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": f"openpyxl error: {e}"}
 
         return {"success": False, "error": "pandas or openpyxl required for Excel"}
@@ -544,7 +546,8 @@ class DataAgent(BaseAgent):
         if isinstance(data, str):
             try:
                 data = json.loads(data)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 p = Path(data)
                 data = json.loads(p.read_text()) if p.exists() else []
 
@@ -577,7 +580,8 @@ class DataAgent(BaseAgent):
         if isinstance(data, str):
             try:
                 data = json.loads(data)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": "Invalid JSON string"}
 
         records = data if isinstance(data, list) else [data]
@@ -895,6 +899,7 @@ class DataAgent(BaseAgent):
                 ),
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def group_by(self, rows: List[Dict], group_col: str,
@@ -1562,7 +1567,8 @@ class DataAgent(BaseAgent):
             try:
                 if _safe_eval_formula(where, row):
                     result.append(row)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         return result
 

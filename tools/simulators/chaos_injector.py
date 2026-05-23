@@ -154,6 +154,7 @@ async def main():
             await test_ooo(ws)
             await asyncio.sleep(1.0)
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         print(f"[Chaos] Connection failed for tests 1-4: {e}")
 
     await asyncio.sleep(2)
@@ -162,6 +163,7 @@ async def main():
     try:
         await test_reconnect_mid_stream()
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         print(f"[Reconnect] Test failed: {e}")
 
     print("\n=== Chaos Injection Complete ===")

@@ -29,6 +29,7 @@ def download_godot():
             
         print("Extraction complete.")
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         print(f"Failed to download/extract: {e}")
         sys.exit(1)
     finally:

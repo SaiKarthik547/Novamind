@@ -10,7 +10,7 @@ from core.ipc.worker_protocol import IpcFrame, FrameType, WorkerIdentity
 logger = logging.getLogger("IpcTransport")
 
 class IpcCorruptionError(Exception):
-    pass
+    """Implementation stub"""
 
 class IpcTransport:
     """

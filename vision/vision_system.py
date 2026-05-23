@@ -252,6 +252,7 @@ class VisionSystem:
                     }
                 return {"success": False, "error": f"Image not found: {image}"}
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": str(e)}
 
         # Text-based element search via OCR
@@ -379,7 +380,8 @@ class VisionSystem:
                 f"Describe: layout, open windows, active elements, what the user is doing."
             )
             description = router.quick_request(prompt, task_type="general")
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             description = f"Screen captured ({r['width']}×{r['height']}). OCR text: {visible_text[:200]}"
 
         return {
@@ -433,6 +435,7 @@ class VisionSystem:
                 "images_differ": similarity < 0.99,
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ──────────────────────────────────────────────────────
@@ -471,6 +474,7 @@ class VisionSystem:
                 "first_location": matches[0] if matches else None,
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ──────────────────────────────────────────────────────

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class FrameWriteError(Exception):
-    pass
+    """Implementation stub"""
 
 
 class FrameWriter:

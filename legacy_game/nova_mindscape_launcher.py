@@ -59,7 +59,8 @@ def _game_worker(cmd_q: multiprocessing.Queue,
                     if exit_action:
                         exit_action()
                         break
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     pass
 
         threading.Thread(target=_cmd_loop, daemon=True).start()
@@ -71,6 +72,7 @@ def _game_worker(cmd_q: multiprocessing.Queue,
             evt_q.put({"type": "error", "error": str(exc)})
 
     except Exception as exc:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {exc}")
         evt_q.put({"type": "error", "error": str(exc)})
     finally:
         evt_q.put({"type": "stopped"})
@@ -128,7 +130,8 @@ class GameProcessManager:
                 if ret:
                     threading.Thread(target=self._event_loop, daemon=True, name="GameEventLoop").start()
                     return ret()
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
         logger.warning(f"GameProcessManager.start: no ready signal after {timeout}s")
@@ -145,7 +148,8 @@ class GameProcessManager:
                     logger.error(f"Game process error: {msg.get('error')}")
                 elif msg.get("type") == "stopped":
                     logger.info("Game process stopped early")
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     def _on_ready(self) -> None:

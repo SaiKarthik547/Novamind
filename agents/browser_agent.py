@@ -141,6 +141,7 @@ class BrowserAgent(BaseAgent):
             }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             # Fallback to os-specific command
             try:
                 _OS_OPEN_MAP = {
@@ -150,6 +151,7 @@ class BrowserAgent(BaseAgent):
                 _OS_OPEN_MAP.get(os.name, lambda: None)()
                 return {"success": True, "url": url, "method": "os_fallback"}
             except Exception as e2:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e2}")
                 return {"success": False, "error": f"{e}; Fallback failed: {e2}"}
 
     def search_web(self, query: str, engine: str = "duckduckgo",
@@ -197,6 +199,7 @@ class BrowserAgent(BaseAgent):
             return result
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def extract_content(self, url: str = None,
@@ -236,6 +239,7 @@ class BrowserAgent(BaseAgent):
             }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def get_page_text(self, url: str = None) -> Dict:
@@ -261,6 +265,7 @@ class BrowserAgent(BaseAgent):
             }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def download_file(self, url: str, destination: str = None,
@@ -291,6 +296,7 @@ class BrowserAgent(BaseAgent):
             }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def screenshot_page(self, url: str = None,
@@ -341,6 +347,7 @@ class BrowserAgent(BaseAgent):
             }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": f"Playwright error: {e}"}
 
     def _screenshot_selenium(self, url: str = None,
@@ -376,6 +383,7 @@ class BrowserAgent(BaseAgent):
             }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": f"Selenium error: {e}"}
 
     def fill_form(self, url: str = None, fields: Dict[str, str] = None,
@@ -442,6 +450,7 @@ class BrowserAgent(BaseAgent):
                 }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def click_element(self, selector: str, url: str = None,
@@ -468,6 +477,7 @@ class BrowserAgent(BaseAgent):
 
                     return {"success": True, "clicked": selector}
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": str(e)}
 
         return {"success": False, "error": "Browser automation not available"}
@@ -500,6 +510,7 @@ class BrowserAgent(BaseAgent):
             title = self._extract_title(content)
             return {"success": True, "title": title, "url": target}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def execute_javascript(self, code: str, url: str = None) -> Dict:
@@ -523,6 +534,7 @@ class BrowserAgent(BaseAgent):
                 return {"success": True, "result": str(result)}
 
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": str(e)}
 
         return {"success": False, "error": "Selenium not available"}

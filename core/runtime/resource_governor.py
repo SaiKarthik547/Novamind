@@ -8,11 +8,11 @@ logger = logging.getLogger("ResourceGovernor")
 
 
 class ResourceViolation(Exception):
-    pass
+    """Implementation stub"""
 
 
 class StarvationError(Exception):
-    pass
+    """Implementation stub"""
 
 
 class ResourceGovernor:

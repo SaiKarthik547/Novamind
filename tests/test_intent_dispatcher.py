@@ -10,7 +10,7 @@ from core.telemetry.telemetry_event import DeterminismLevel
 from core.execution.execution_intent import ExecutionIntent, IntentStatus, VerificationMode, RollbackMode
 
 class DummyKernel:
-    pass
+    """Implementation stub"""
 
 class TestIntentDispatcher(unittest.TestCase):
     def setUp(self):

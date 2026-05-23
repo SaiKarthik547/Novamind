@@ -83,7 +83,8 @@ class EventBus:
                     event_type,
                     details=json.dumps(data, default=str)[:2000],
                 )
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
         for handler in self._subscribers.get(event_type, []):

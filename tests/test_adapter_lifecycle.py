@@ -8,7 +8,7 @@ from adapters.shell.pty_adapter import PTYAdapter
 from core.telemetry.telemetry_event import DeterminismLevel
 
 class DummyKernel:
-    pass
+    """Implementation stub"""
 
 class TestAdapterLifecycle(unittest.TestCase):
     def setUp(self):

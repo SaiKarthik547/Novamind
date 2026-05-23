@@ -94,6 +94,7 @@ class ProcessAdapter(ApplicationAdapter):
                 "duration_ms": int((time.time() - start_time) * 1000)
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             self._state = AdapterState.ATTACHED
             return {
                 "error": str(e),
@@ -121,7 +122,8 @@ class ProcessAdapter(ApplicationAdapter):
         for pid, proc in self._processes.items():
             try:
                 proc.terminate()
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         self._processes.clear()
 

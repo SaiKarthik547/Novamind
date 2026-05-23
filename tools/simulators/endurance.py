@@ -52,6 +52,7 @@ async def endurance_test():
                     snapshot1 = snapshot2
                     
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         print(f"Endurance test failed prematurely: {e}")
         
     print("\n--- Endurance Test Complete ---")

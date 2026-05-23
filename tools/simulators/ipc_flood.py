@@ -54,6 +54,7 @@ async def flood_test():
             print(f"Throughput: {10000/elapsed:.2f} msg/sec.")
             
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         print(f"Flood test failed: {e}")
 
 async def main():
@@ -62,6 +63,7 @@ async def main():
         async with websockets.connect(URI) as ws:
             await fuzz_payloads(ws)
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         print(f"Could not connect: {e}")
         
     await asyncio.sleep(1)

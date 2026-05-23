@@ -546,7 +546,8 @@ class FileAgent(BaseAgent):
                         "depth":    depth,
                     })
                     count += 1
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     pass
 
         return {"success": True, "root": str(root), "files": found,
@@ -572,7 +573,8 @@ class FileAgent(BaseAgent):
                 if show_size and item.is_file():
                     try:
                         size_str = f"  ({self._human_size(item.stat().st_size)})"
-                    except Exception:
+                    except Exception as e:
+                        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                         pass
                 lines.append(f"{prefix}{connector}{item.name}{size_str}")
                 if item.is_dir():
@@ -620,7 +622,8 @@ class FileAgent(BaseAgent):
                     "modified": datetime.fromtimestamp(st.st_mtime).isoformat(),
                     "type":     "dir" if p.is_dir() else "file",
                 })
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 matches.append({"path": str(p), "name": p.name})
         return {"success": True, "pattern": pattern, "count": len(matches),
                 "results": matches, "truncated": len(matches) >= max_results}
@@ -648,7 +651,8 @@ class FileAgent(BaseAgent):
             try:
                 enc   = self._sniff_encoding(filepath) or "utf-8"
                 lines = filepath.read_text(enc, errors="replace").splitlines()
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 continue
             for i, line in enumerate(lines):
                 if compiled.search(line):
@@ -679,7 +683,8 @@ class FileAgent(BaseAgent):
                     if size >= threshold:
                         found.append({"path": str(fp), "size_mb": round(size / 1e6, 2),
                                        "name": fp.name})
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         found.sort(key=lambda x: x["size_mb"], reverse=True)
         return {"success": True, "threshold_mb": min_size_mb,
@@ -704,7 +709,8 @@ class FileAgent(BaseAgent):
                             "size":    fp.stat().st_size,
                             "modified": datetime.fromtimestamp(mtime).isoformat(),
                         })
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         found.sort(key=lambda x: x["age_days"], reverse=True)
         return {"success": True, "older_than_days": older_than_days,
@@ -722,7 +728,8 @@ class FileAgent(BaseAgent):
                     if m and m.startswith(mime_prefix):
                         found.append({"path": str(fp), "mime": m,
                                        "size": fp.stat().st_size})
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         return {"success": True, "mime_prefix": mime_prefix,
                 "count": len(found), "files": found[:max_results]}
@@ -740,7 +747,8 @@ class FileAgent(BaseAgent):
                     digest = self._file_hash(fp, algorithm)
                     hashes[digest].append(str(fp))
                     total += 1
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
         groups = {h: paths for h, paths in hashes.items() if len(paths) > 1}
@@ -820,7 +828,8 @@ class FileAgent(BaseAgent):
                     if fp.is_file():
                         total += fp.stat().st_size
                         count += 1
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     pass
         return {"success": True, "path": str(p), "size": total,
                 "size_human": self._human_size(total), "file_count": count}
@@ -859,7 +868,8 @@ class FileAgent(BaseAgent):
             with open(p, "rb") as f:
                 chunk = f.read(8192)
             is_binary = b"\x00" in chunk
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             is_binary = False
 
         return {
@@ -1137,7 +1147,8 @@ class FileAgent(BaseAgent):
         finally:
             try:
                 os.unlink(tmp)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1322,13 +1333,15 @@ class FileAgent(BaseAgent):
             if root.is_file():
                 try:
                     snap[str(root)] = root.stat().st_mtime
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     pass
             else:
                 for fp in root.rglob("*"):
                     try:
                         snap[str(fp)] = fp.stat().st_mtime
-                    except Exception:
+                    except Exception as e:
+                        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                         pass
             return snap
 
@@ -1428,7 +1441,8 @@ class FileAgent(BaseAgent):
                 raw = p.read_bytes()[:10000]
                 result = chardet.detect(raw)
                 return result.get("encoding")
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         return "utf-8"
 

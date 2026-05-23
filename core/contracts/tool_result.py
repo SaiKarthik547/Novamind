@@ -47,7 +47,7 @@ class Tool(ABC):
 
     @abstractmethod
     async def execute(self, args: Dict) -> ToolResult:
-        pass
+        """Implementation stub"""
 
     def _result(self, success: bool, output: Any = None,
                 error: str = None, start_ms: float = None,
@@ -94,4 +94,4 @@ def get_tool(name: str) -> Tool:
 
 
 class ToolNotFoundError(KeyError):
-    pass
+    """Implementation stub"""

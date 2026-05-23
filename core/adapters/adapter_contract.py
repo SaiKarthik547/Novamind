@@ -27,6 +27,7 @@ class ApplicationAdapter(ABC):
     
     @abstractmethod
     def get_state(self) -> AdapterState:
+        """Interface method"""
         raise NotImplementedError()
 
     @abstractmethod

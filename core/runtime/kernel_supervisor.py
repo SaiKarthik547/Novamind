@@ -38,6 +38,7 @@ class KernelSupervisor:
             for tx_id, state in reconciliation_states.items():
                 logger.info(f"Reconciliation for TX {tx_id}: {state.value}")
         except Exception as e:
+            logger.error(f"Boot reconciliation failed: {e}")
             self.panic_manager.invoke_panic(PanicLevel.FATAL, f"Boot reconciliation failed: {e}")
 
     def launch_worker(self, worker_cmd: list[str]) -> str:
@@ -61,9 +62,8 @@ class KernelSupervisor:
 
     def freeze_scheduler(self):
         logger.warning("KernelSupervisor: Scheduler dispatch frozen.")
-        # Actually pause the CausalScheduler's event loop
-        # Implementation depends on scheduler interface
-        pass
+        if hasattr(self.scheduler, 'freeze'):
+            self.scheduler.freeze()
 
     def halt_and_catch_fire(self, flush_wal: bool = False):
         if flush_wal and self.wal:

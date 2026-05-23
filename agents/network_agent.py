@@ -255,7 +255,8 @@ class NetworkAgent(BaseAgent):
                 open_p = [p for p in ports if self._tcp_connect(ip, p, timeout)]
                 try:
                     hostname = socket.gethostbyaddr(ip)[0]
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     hostname = ""
                 return {"ip": ip, "hostname": hostname, "open_ports": open_p}
             return None
@@ -481,6 +482,7 @@ class NetworkAgent(BaseAgent):
             except self._requests.exceptions.Timeout:
                 return {"success": False, "error": f"Request timed out after {timeout}s"}
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": str(e)}
 
         # Fallback: urllib
@@ -510,6 +512,7 @@ class NetworkAgent(BaseAgent):
         except urllib.error.HTTPError as e:
             return {"success": False, "status": e.code, "error": str(e), "url": url}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e), "url": url}
 
     def http_get(self, url: str, headers: Dict = None,
@@ -583,6 +586,7 @@ class NetworkAgent(BaseAgent):
                 "speed_mbps": round((total / 1e6) / elapsed, 2) if elapsed > 0 else 0,
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e), "url": url}
 
     def check_redirects(self, url: str) -> Dict:
@@ -597,6 +601,7 @@ class NetworkAgent(BaseAgent):
                 return {"success": True, "redirects": len(resp.history),
                         "chain": chain, "final_url": resp.url}
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": str(e)}
         return {"success": False, "error": "requests required for redirect tracing"}
 
@@ -656,6 +661,7 @@ class NetworkAgent(BaseAgent):
             return {"success": True, "host": host, "valid": False,
                     "error": str(e)}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e), "host": host}
 
     def get_ssl_details(self, host: str, port: int = 443) -> Dict:
@@ -683,6 +689,7 @@ class NetworkAgent(BaseAgent):
                 },
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -860,7 +867,8 @@ class NetworkAgent(BaseAgent):
                     ip   = body.get("ip") or body.get("origin")
                     if ip:
                         return {"success": True, "public_ip": ip.strip(), "source": url}
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 continue
         return {"success": False, "error": "Could not get public IP"}
 
@@ -886,6 +894,7 @@ class NetworkAgent(BaseAgent):
                 "isp":        data.get("org"),
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def get_ip_info(self, ip: str) -> Dict:
@@ -896,7 +905,8 @@ class NetworkAgent(BaseAgent):
         try:
             data = json.loads(r["body"])
             return {"success": True, **data}
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": True, "raw": r["body"]}
 
     def detect_vpn(self) -> Dict:
@@ -931,7 +941,8 @@ class NetworkAgent(BaseAgent):
                     "fraud_score": score,
                     "suspicious": score > 0.9,
                 }
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         return {"success": True, "ip": ip, "note": "Reputation check unavailable"}
 
@@ -1103,7 +1114,8 @@ class NetworkAgent(BaseAgent):
                 winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, 1)
                 winreg.SetValueEx(key, "ProxyServer", 0, winreg.REG_SZ, http_proxy)
                 winreg.CloseKey(key)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
         return {"success": True, "http": http_proxy, "https": https}
@@ -1136,6 +1148,7 @@ class NetworkAgent(BaseAgent):
                     "ip_via_proxy": r.json().get("origin") if r.ok else None,
                 }
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "proxy": proxy_url, "error": str(e)}
         return {"success": False, "error": "requests required for proxy testing"}
 
@@ -1253,7 +1266,8 @@ class NetworkAgent(BaseAgent):
             result = sock.connect_ex((host, port))
             sock.close()
             return result == 0
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return False
 
     def _grab_banner(self, host: str, port: int,
@@ -1266,7 +1280,8 @@ class NetworkAgent(BaseAgent):
             banner = sock.recv(1024).decode("utf-8", errors="replace")
             sock.close()
             return banner.strip()[:200]
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return ""
 
     def _is_alive(self, ip: str, timeout: float = 0.5) -> bool:
@@ -1294,7 +1309,8 @@ class NetworkAgent(BaseAgent):
                         if (addr.family == socket.AF_INET and
                                 not addr.address.startswith("127.")):
                             return addr.address
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             pass
         return None
 

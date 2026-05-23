@@ -18,10 +18,10 @@ from typing import Any, Optional, Tuple, Callable, Dict, List
 logger = logging.getLogger("ElementFinder")
 
 class ElementNotFoundError(Exception):
-    pass
+    """Implementation stub"""
 
 class DependencyMissingError(Exception):
-    pass
+    """Implementation stub"""
 
 
 try:
@@ -168,7 +168,8 @@ class _OCRStrategy:
                         ),
                     )
             return None
-        except Exception:
+        except Exception as e:
+            logger.debug(f"ElementFinder: Tesseract OCR failed: {e}")
             return None
 
     def _easyocr_find(self, image, text: str) -> Optional[FoundElement]:
@@ -194,7 +195,8 @@ class _OCRStrategy:
                         bounding_box=(int(min(xs)), int(min(ys)), int(max(xs)), int(max(ys))),
                     )
             return None
-        except Exception:
+        except Exception as e:
+            logger.debug(f"ElementFinder: EasyOCR failed: {e}")
             return None
 
 
@@ -248,7 +250,8 @@ class _TemplateStrategy:
                     bounding_box=(max_loc[0], max_loc[1], max_loc[0] + tw, max_loc[1] + th),
                 )
             return None
-        except Exception:
+        except Exception as e:
+            logger.debug(f"ElementFinder: Template match failed: {e}")
             return None
 
 

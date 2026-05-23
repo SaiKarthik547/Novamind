@@ -49,7 +49,8 @@ try:
     if not hasattr(comtypes.gen, 'UIAutomationClient'):
         try:
             comtypes.client.GetModule('UIAutomationCore.dll')
-        except Exception:
+        except Exception as e:
+            logger.debug(f"comtypes GetModule UIAutomationCore.dll failed: {e}")
             comtypes.client.GetModule(
                 ('{ff48dba4-60ef-4201-aa87-54103eef594e}', 1, 0)
             )
@@ -156,28 +157,32 @@ class UIElement:
     def name(self) -> str:
         try:
             return self._el.CurrentName or ""
-        except Exception:
+        except Exception as e:
+            logger.debug(f"UIElement name property failed: {e}")
             return ""
 
     @property
     def automation_id(self) -> str:
         try:
             return self._el.CurrentAutomationId or ""
-        except Exception:
+        except Exception as e:
+            logger.debug(f"UIElement automation_id property failed: {e}")
             return ""
 
     @property
     def control_type(self) -> int:
         try:
             return self._el.CurrentControlType
-        except Exception:
+        except Exception as e:
+            logger.debug(f"UIElement control_type property failed: {e}")
             return -1
 
     @property
     def bounding_rect(self):
         try:
             return self._el.CurrentBoundingRectangle
-        except Exception:
+        except Exception as e:
+            logger.debug(f"UIElement bounding_rect property failed: {e}")
             return None
 
     @property
@@ -186,26 +191,30 @@ class UIElement:
             r = self._el.CurrentBoundingRectangle
             return (r.left + (r.right - r.left) // 2,
                     r.top + (r.bottom - r.top) // 2)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"UIElement center property failed: {e}")
             return None
 
     @property
     def is_enabled(self) -> bool:
         try:
             return bool(self._el.CurrentIsEnabled)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"UIElement is_enabled property failed: {e}")
             return False
 
     def _invoke_pattern(self):
         try:
             return self._el.GetCurrentPattern(_UIA_T.UIA_InvokePatternId)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"UIElement invoke_pattern failed: {e}")
             return None
 
     def _value_pattern(self):
         try:
             return self._el.GetCurrentPattern(_UIA_T.UIA_ValuePatternId)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"UIElement value_pattern failed: {e}")
             return None
 
     def _click_centre(self) -> None:
@@ -271,8 +280,8 @@ class UIElement:
             try:
                 val_pat = pattern.QueryInterface(_UIA_T.IUIAutomationValuePattern)
                 return val_pat.CurrentValue or ""
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"UIElement get_value failed: {e}")
         return ""
 
     def focus(self) -> None:
@@ -344,7 +353,8 @@ class UIAExecutor:
                         el_name = el.CurrentName or ""
                         if title_contains.lower() in el_name.lower():
                             return UIWindow(UIElement(el))
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"find_window CurrentName failed: {e}")
                         continue
             except Exception as e:
                 logger.debug(f"find_window iteration error: {e}")

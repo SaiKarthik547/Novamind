@@ -24,7 +24,7 @@ FRAME_READ_TIMEOUT = 5.0  # seconds
 
 
 class FrameReadError(Exception):
-    pass
+    """Implementation stub"""
 
 
 class FrameReader:

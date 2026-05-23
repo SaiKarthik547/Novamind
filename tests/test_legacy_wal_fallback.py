@@ -23,7 +23,7 @@ def legacy_session_dir(tmp_path):
 async def test_legacy_wal_strict_rejection(legacy_session_dir):
     engine = ReplayEngine(mode=ReplayMode.STRICT)
     class MockBus:
-        def publish(self, e): pass
+        def publish(self, e): """Implementation stub"""
         
     # Should raise ValueError because it lacks hash chaining
     success = await engine.execute_recovery(None, legacy_session_dir, MockBus())
@@ -33,7 +33,7 @@ async def test_legacy_wal_strict_rejection(legacy_session_dir):
 async def test_legacy_wal_diagnostic_fallback(legacy_session_dir):
     engine = ReplayEngine(mode=ReplayMode.DIAGNOSTIC)
     class MockBus:
-        def publish(self, e): pass
+        def publish(self, e): """Implementation stub"""
         
     success = await engine.execute_recovery(None, legacy_session_dir, MockBus())
     assert success is True
@@ -44,7 +44,7 @@ async def test_legacy_wal_diagnostic_fallback(legacy_session_dir):
 async def test_legacy_wal_salvage_fallback(legacy_session_dir):
     engine = ReplayEngine(mode=ReplayMode.SALVAGE)
     class MockBus:
-        def publish(self, e): pass
+        def publish(self, e): """Implementation stub"""
         
     success = await engine.execute_recovery(None, legacy_session_dir, MockBus())
     assert success is True

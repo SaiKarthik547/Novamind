@@ -46,7 +46,8 @@ class EffectJournal:
             try:
                 clock_value = get_runtime_clock().tick()
                 epoch_id = get_epoch_manager().current
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
         self.log.append({

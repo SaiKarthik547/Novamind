@@ -194,6 +194,7 @@ class TestTaskParserRouting:
             )
             assert step.agent == "application_agent"
         except Exception as exc:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {exc}")
             pytest.skip(f"TaskParser requires LLM router: {exc}")
 
     def test_is_drawing_request_detection(self):

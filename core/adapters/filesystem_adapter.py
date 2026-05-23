@@ -57,6 +57,7 @@ class FilesystemAdapter(ApplicationAdapter):
             else:
                 raise ValueError(f"Unknown operation: {op}")
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             self._state = AdapterState.ATTACHED
             return {"error": str(e), "success": False}
 

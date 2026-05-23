@@ -77,6 +77,6 @@ def get_global_dispatcher() -> IntentDispatcher:
     global _GLOBAL_DISPATCHER
     if _GLOBAL_DISPATCHER is None:
         from core.adapters.adapter_supervisor import AdapterSupervisor
-        class DummyKernel: pass
+        class DummyKernel: """Implementation stub"""
         _GLOBAL_DISPATCHER = IntentDispatcher(AdapterSupervisor(DummyKernel()))
     return _GLOBAL_DISPATCHER

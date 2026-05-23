@@ -96,7 +96,7 @@ _MAXIMIZE_WAIT  = 0.5
 _FOCUS_WAIT     = 0.3
 
 class CanvasNotFoundError(Exception):
-    pass
+    """Implementation stub"""
 
 
 # ── PaintAgent ────────────────────────────────────────────────────────────────
@@ -232,7 +232,8 @@ class PaintAgent(BaseAgent):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             img.save(path)
             return path
-        except:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return ""
 
     def ensure_open(self) -> bool:

@@ -12,8 +12,10 @@ class CompositorBridge(ABC):
         
     @abstractmethod
     def start_stream(self, session_id: str) -> bool:
+        """Interface method"""
         raise NotImplementedError()
         
     @abstractmethod
     def stop_stream(self, session_id: str) -> None:
+        """Interface method"""
         raise NotImplementedError()

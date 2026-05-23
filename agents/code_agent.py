@@ -388,11 +388,13 @@ class CodeAgent(BaseAgent):
             }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
         finally:
             try:
                 os.unlink(tmp)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -430,11 +432,13 @@ class CodeAgent(BaseAgent):
             proc.kill()
             return {"success": False, "error": f"JS execution timed out after {timeout}s"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
         finally:
             try:
                 os.unlink(tmp)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     def execute_bash(self, code: str, timeout: int = 60,
@@ -472,7 +476,8 @@ class CodeAgent(BaseAgent):
         finally:
             try:
                 os.unlink(tmp)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     def execute_powershell(self, code: str, timeout: int = 60) -> Dict:
@@ -503,7 +508,8 @@ class CodeAgent(BaseAgent):
         finally:
             try:
                 os.unlink(tmp)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -894,7 +900,8 @@ class CodeAgent(BaseAgent):
                         keep.append(line)
                     else:
                         removed.append(line.strip())
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     keep.append(line)
             else:
                 keep.append(line)
@@ -1020,6 +1027,7 @@ class CodeAgent(BaseAgent):
             except subprocess.TimeoutExpired:
                 return {"success": False, "error": "Tests timed out after 120s"}
             except Exception as exc:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {exc}")
                 return {"success": False, "error": f"Test runner error: {exc}"}
 
     def run_coverage(self, code: str, test_code: str = None) -> Dict:
@@ -1133,6 +1141,7 @@ class CodeAgent(BaseAgent):
                     path.chmod(path.stat().st_mode | 0o111)
                 result["saved_to"] = str(path.resolve())
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 result["save_error"] = str(e)
         return result
 
@@ -1161,6 +1170,7 @@ class CodeAgent(BaseAgent):
                 "code": code_result["code"],
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def create_package(self, name: str, description: str,
@@ -1210,6 +1220,7 @@ class CodeAgent(BaseAgent):
                 "files_created": created,
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1231,6 +1242,7 @@ class CodeAgent(BaseAgent):
                 "stderr": proc.stderr,
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def git_status(self, repo_path: str = None) -> Dict:
@@ -1327,6 +1339,7 @@ class CodeAgent(BaseAgent):
                 "count": len(packages),
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def pip_check(self, venv_path: str = None) -> Dict:
@@ -1360,6 +1373,7 @@ class CodeAgent(BaseAgent):
                 "stderr": proc.stderr,
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def generate_requirements(self, code: str = None,
@@ -1392,7 +1406,8 @@ class CodeAgent(BaseAgent):
                     for node in ast.walk(tree):
                         h = _REQ_HANDLERS.get(type(node))
                         h(node) if h else None
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     continue
 
         stdlib = set(sys.stdlib_module_names) if hasattr(sys, "stdlib_module_names") else set()
@@ -1449,6 +1464,7 @@ class CodeAgent(BaseAgent):
 
                 return {"success": False, "error": "patch command not found"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def search_code(self, pattern: str, directory: str = ".",
@@ -1468,7 +1484,8 @@ class CodeAgent(BaseAgent):
         for path in Path(directory).rglob(file_pattern):
             try:
                 lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 continue
             for i, line in enumerate(lines):
                 if compiled.search(line):
@@ -1653,7 +1670,8 @@ class CodeAgent(BaseAgent):
         finally:
             try:
                 os.unlink(tmp)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     def _run_mypy(self, code: str, strict: bool = False) -> List[Dict]:
@@ -1680,7 +1698,8 @@ class CodeAgent(BaseAgent):
         finally:
             try:
                 os.unlink(tmp)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     def _run_bandit(self, code: str, severity: str = "MEDIUM") -> List[Dict]:
@@ -1708,7 +1727,8 @@ class CodeAgent(BaseAgent):
         finally:
             try:
                 os.unlink(tmp)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1781,12 +1801,14 @@ class CodeAgent(BaseAgent):
             except subprocess.TimeoutExpired:
                 analysis_results[tool] = f"{tool}_timed_out"
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 analysis_results[tool] = str(e)
 
         # Cleanup temp file after all analysers have finished
         try:
             os.unlink(tmp_path)
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             pass
 
         result["static_analysis"] = analysis_results

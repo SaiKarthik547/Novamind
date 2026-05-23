@@ -59,6 +59,7 @@ async def simulate_crash_and_reconnect():
                 print("[Result] FAILED: Server reconnected but failed to send heartbeat reconciliation.")
                 
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         print(f"Phase E Test Failed: {e}")
 
 if __name__ == "__main__":

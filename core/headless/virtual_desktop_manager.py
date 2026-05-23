@@ -1,14 +1,14 @@
 from abc import ABC, abstractmethod
 
 class DesktopSessionID(str):
-    pass
+    """Implementation stub"""
 
 class ExecutionDesktop(ABC):
     """Abstract ownership boundary for a desktop session."""
     @property
     @abstractmethod
     def session_id(self) -> DesktopSessionID:
-        pass
+        """Implementation stub"""
 
 class InputDesktop(ExecutionDesktop):
     """Abstract boundary for isolated input (keyboard/mouse)."""
@@ -26,16 +26,20 @@ class VirtualDesktopManager(ABC):
     
     @abstractmethod
     def create_session(self) -> DesktopSessionID:
+        """Interface method"""
         raise NotImplementedError()
 
     @abstractmethod
     def get_render_desktop(self, session: DesktopSessionID) -> RenderDesktop:
+        """Interface method"""
         raise NotImplementedError()
 
     @abstractmethod
     def get_input_desktop(self, session: DesktopSessionID) -> InputDesktop:
+        """Interface method"""
         raise NotImplementedError()
         
     @abstractmethod
     def terminate_session(self, session: DesktopSessionID) -> None:
+        """Interface method"""
         raise NotImplementedError()

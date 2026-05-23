@@ -111,7 +111,8 @@ class VerifierAgent(BaseAgent):
                     action="verify",
                     severity="low" if result.satisfied else "medium",
                 )
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
         if self.event_bus:
@@ -212,5 +213,4 @@ class VerifierAgent(BaseAgent):
         except Exception as exc:
             logger.warning(f"Verification parse error: {exc}")
             return defaults
-
 

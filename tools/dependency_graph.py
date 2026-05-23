@@ -16,6 +16,7 @@ def get_imports(filepath):
                 if node.module:
                     imports.append(node.module)
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         pass
     return imports
 

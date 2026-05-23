@@ -468,7 +468,8 @@ class MemorySystem:
                 action = _parse.get(row is not None)
                 try:
                     return action() if action else None
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     return None
 
     # ── Agent state snapshots ─────────────────────────────────────────────────

@@ -329,7 +329,8 @@ class NovaMindscape:
         if URSINA_OK:
             try:
                 application.quit()
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     def run_blocking(self) -> None:
@@ -367,7 +368,8 @@ class NovaMindscape:
                 logger.info("Low-perf mode active: rain disabled, reduced NPC/vehicle counts")
             else:
                 window.size = GAME_RESOLUTION
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             window.size = self.config.window_size
 
         window.fps_counter.enabled = True
@@ -1464,7 +1466,8 @@ class NovaMindscape:
                 color=color.rgba(0, 0, 0, 12),
                 parent=ui,
             )
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             pass
 
         # ── Controls hint ─────────────────────────────────────────────────
@@ -1659,7 +1662,8 @@ class NovaMindscape:
                 msg = _q.get_nowait()
                 handler = _handlers.get(msg.get("cmd", ""))
                 handler and handler(msg)
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             pass   # queue.Empty is expected and not an error
 
     def _game_update(self):
@@ -1967,7 +1971,8 @@ class NovaMindscape:
                     if bd.get(key):
                         try:
                             destroy(bd[key])
-                        except Exception:
+                        except Exception as e:
+                            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                             pass
 
         for i, task in enumerate(tasks):
@@ -2227,7 +2232,8 @@ class NovaMindscape:
             if tid not in active_ids:
                 try:
                     destroy(self._minimap_dots.pop(tid))
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     pass
 
         for tk in tasks:
@@ -2265,7 +2271,8 @@ class NovaMindscape:
                 dot.x     = dot_x
                 dot.y     = dot_y
                 dot.color = color.rgba(cr, cg, cb, 220)
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
 
     # ─────────────────────────────────────────────────────────────────────────

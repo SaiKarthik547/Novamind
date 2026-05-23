@@ -52,7 +52,7 @@ _ENUM_TO_MSG_TYPE = {v: k for k, v in _MSG_TYPE_TO_ENUM.items()}
 
 
 class FrameCodecError(Exception):
-    pass
+    """Implementation stub"""
 
 
 def parse_protocol_version(ver_str: str) -> Tuple[int, int, int]:

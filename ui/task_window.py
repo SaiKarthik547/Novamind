@@ -1094,7 +1094,8 @@ class TaskWindow(QMainWindow):
         self._tray.setToolTip("NovaMind")
         try:
             self._tray.setIcon(QIcon.fromTheme("computer"))
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             pass
         menu = QMenu()
         menu.addAction("Show / Hide", self.toggle_visibility)

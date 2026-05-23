@@ -183,6 +183,7 @@ class StepExecutor:
             except FocusLostError as e:
                 result.error = str(e)
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 result.error = str(e)
 
         result.elapsed = time.time() - start
@@ -215,7 +216,8 @@ def _safe_mouseup() -> None:
     _up = {True: lambda: pyautogui.mouseUp()}
     try:
         _up.get(PYAUTOGUI_OK, lambda: None)()
-    except Exception:
+    except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         pass
 
 

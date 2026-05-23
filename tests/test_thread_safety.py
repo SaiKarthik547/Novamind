@@ -26,6 +26,7 @@ async def mock_client():
                 pass # Storm is over
             print(f"[Client] Storm ended. Received {received} messages in {time.time() - start_time:.2f}s")
     except Exception as e:
+        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
         print(f"[Client] Error: {e}")
     return received
 

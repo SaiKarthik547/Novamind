@@ -226,7 +226,8 @@ class ApplicationAgent(BaseAgent):
         """Fetch the current foreground window title for focus-safe auditing."""
         try:
             return gw.getActiveWindow().title if PYGETWINDOW_OK else ""
-        except:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return ""
 
     # ── Public execute dispatcher ────────────────────────────────────────────
@@ -308,6 +309,7 @@ class ApplicationAgent(BaseAgent):
                         "method": "windows_search", "title": appeared.get("title", "")}
             return {"success": False, "error": f"Window '{title_hint}' did not appear"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def _open_via_run_dialog(self, exe: str,
@@ -328,6 +330,7 @@ class ApplicationAgent(BaseAgent):
                         "method": "run_dialog", "title": appeared.get("title", "")}
             return {"success": False, "error": f"Window '{title_hint}' not found after Win+R"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def _open_via_shell(self, app_name: str, args: List[str],
@@ -341,22 +344,22 @@ class ApplicationAgent(BaseAgent):
         if platform.system() == "Windows" and not os.path.isabs(cmd):
             try:
                 found = subprocess.check_output(
-                    f"where {cmd}", shell=True, text=True, stderr=subprocess.DEVNULL,
+                    ["where", cmd], shell=False, text=True, stderr=subprocess.DEVNULL,
                     timeout=15
                 ).strip().splitlines()
                 if found:
                     cmd = found[0]
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         try:
             parts = [cmd] + args
-            cmd_str = " ".join(f'"{p}"' if " " in p else p for p in parts)
             proc = subprocess.Popen(
-                cmd_str,
-                shell=True,
+                parts,
+                shell=False,
                 cwd=working_dir or os.path.expanduser("~"),
             )
-            logger.info(f"Shell launch: '{cmd_str}' PID={proc.pid}")
+            logger.info(f"Shell launch: '{parts}' PID={proc.pid}")
             if title_hint:
                 appeared = self._wait_for_any_window(title_hint, max_wait)
                 if appeared.get("success", False):
@@ -368,6 +371,7 @@ class ApplicationAgent(BaseAgent):
         except FileNotFoundError:
             return {"success": False, "error": f"Application not found: {app_name}"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ── WINDOW MANAGEMENT ────────────────────────────────────────────────────
@@ -376,8 +380,8 @@ class ApplicationAgent(BaseAgent):
                            process_name: str = None) -> Dict:
         if process_name and platform.system() == "Windows":
             r = subprocess.run(
-                f"taskkill /F /IM {process_name}",
-                shell=True, capture_output=True, text=True, timeout=15
+                ["taskkill", "/F", "/IM", process_name],
+                shell=False, capture_output=True, text=True, timeout=15
             )
             return {"success": r.returncode == 0, "output": r.stdout}
         if title_contains and PYGETWINDOW_OK:
@@ -386,7 +390,8 @@ class ApplicationAgent(BaseAgent):
             for w in wins:
                 try:
                     w.close()
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     pass
             return {"success": bool(wins), "closed": len(wins)}
         return {"success": False, "error": "Provide title_contains or process_name"}
@@ -489,6 +494,7 @@ class ApplicationAgent(BaseAgent):
                     return {"success": False, "error": f"Image not found: {image}"}
                 x, y = int(loc.x), int(loc.y)
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": f"Image locate failed: {e}"}
         if x is None or y is None:
             return {"success": False, "error": "Provide x, y or image"}
@@ -794,7 +800,9 @@ Choose next action (JSON):
                         cy = data["top"][i]  + data["height"][i] // 2
                         safe_click(self._get_active_window_title(), cx, cy)
                         return {"success": True, "text": word, "x": cx, "y": cy}
-            except Exception as e: return {"success": False, "error": str(e)}
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
+                return {"success": False, "error": str(e)}
             time.sleep(0.3)
         return {"success": False, "error": f"Text not found: '{text}'"}
 
@@ -872,14 +880,14 @@ Choose next action (JSON):
     def open_folder(self, path: str) -> Dict:
         path = os.path.expanduser(path)
         if not os.path.isdir(path): return {"success": False, "error": "Not dir"}
-        subprocess.Popen(f'explorer "{path}"', shell=True)
+        subprocess.Popen(["explorer", path], shell=False)
         self._wait_for_any_window("Explorer", timeout=8.0)
         return {"success": True, "path": path}
 
     def open_file_with(self, file_path: str, app: str = None) -> Dict:
         file_path = os.path.expanduser(file_path)
         if not os.path.isfile(file_path): return {"success": False, "error": "Not file"}
-        if app: subprocess.Popen(f'"{app}" "{file_path}"', shell=True)
+        if app: subprocess.Popen([app, file_path], shell=False)
         else: os.startfile(file_path)
         self._wait_for_screen_change(timeout=4.0)
         return {"success": True, "file": file_path}

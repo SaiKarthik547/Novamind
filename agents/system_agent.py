@@ -281,6 +281,7 @@ class SystemAgent(BaseAgent):
                 self.running_processes.pop(proc.pid, None)
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def execute_script(self, code: str, language: str = "python",
@@ -324,7 +325,9 @@ class SystemAgent(BaseAgent):
             }
         finally:
             try: os.unlink(tmp)
-            except Exception as e: self._emit_suppressed("exec_python_cleanup", e)
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
+                self._emit_suppressed("exec_python_cleanup", e)
 
     def _exec_shell(self, code: str, timeout: int) -> Dict:
         sh = shutil.which("bash") or shutil.which("sh") or "sh"
@@ -342,7 +345,9 @@ class SystemAgent(BaseAgent):
             return {"success": proc.returncode == 0, "stdout": out, "stderr": err}
         finally:
             try: os.unlink(tmp)
-            except Exception as e: self._emit_suppressed("exec_shell_cleanup", e)
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
+                self._emit_suppressed("exec_shell_cleanup", e)
 
     def _exec_js(self, code: str, timeout: int) -> Dict:
         node = shutil.which("node") or shutil.which("nodejs")
@@ -362,7 +367,9 @@ class SystemAgent(BaseAgent):
             return {"success": proc.returncode == 0, "stdout": out, "stderr": err}
         finally:
             try: os.unlink(tmp)
-            except Exception as e: self._emit_suppressed("exec_js_cleanup", e)
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
+                self._emit_suppressed("exec_js_cleanup", e)
 
     def execute_powershell(self, script: str, timeout: int = 120,
                             execution_policy: str = "Bypass") -> Dict:
@@ -393,7 +400,9 @@ class SystemAgent(BaseAgent):
             }
         finally:
             try: os.unlink(tmp)
-            except Exception as e: self._emit_suppressed("exec_powershell_cleanup", e)
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
+                self._emit_suppressed("exec_powershell_cleanup", e)
 
     def execute_batch(self, script: str, timeout: int = 60) -> Dict:
         """Execute a Windows batch (.bat) script."""
@@ -414,7 +423,9 @@ class SystemAgent(BaseAgent):
             return {"success": proc.returncode == 0, "stdout": out, "stderr": err}
         finally:
             try: os.unlink(tmp)
-            except Exception as e: self._emit_suppressed("exec_batch_cleanup", e)
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
+                self._emit_suppressed("exec_batch_cleanup", e)
 
     # -------------------------------------------------------------------------
     #  System Info
@@ -580,7 +591,9 @@ class SystemAgent(BaseAgent):
                     lines = [l.strip() for l in r.stdout.splitlines()
                              if l.strip() and "Node" not in l and l.count(",") > 0]
                     info[key] = lines
-                except Exception: info[key] = []
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
+                    info[key] = []
 
         def _get_linux():
             try:
@@ -712,7 +725,8 @@ class SystemAgent(BaseAgent):
                         try:
                             kid.kill() if force else kid.terminate()
                             killed.append(kid.pid)
-                        except Exception:
+                        except Exception as e:
+                            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                             pass
                 if force:
                     proc.kill()
@@ -722,6 +736,7 @@ class SystemAgent(BaseAgent):
             except psutil.AccessDenied as e:
                 errors.append(f"Access denied for PID {proc.pid}")
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 errors.append(str(e))
 
         return {
@@ -738,6 +753,7 @@ class SystemAgent(BaseAgent):
             psutil.Process(pid).suspend()
             return {"success": True, "pid": pid, "state": "suspended"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def resume_process(self, pid: int) -> Dict:
@@ -748,6 +764,7 @@ class SystemAgent(BaseAgent):
             psutil.Process(pid).resume()
             return {"success": True, "pid": pid, "state": "resumed"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def get_process_info(self, pid: int) -> Dict:
@@ -780,6 +797,7 @@ class SystemAgent(BaseAgent):
         except psutil.NoSuchProcess:
             return {"success": False, "error": f"PID {pid} not found"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def set_process_priority(self, pid: int, priority: str = "normal") -> Dict:
@@ -800,6 +818,7 @@ class SystemAgent(BaseAgent):
             psutil.Process(pid).nice(prio_val)
             return {"success": True, "pid": pid, "priority": priority}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # -------------------------------------------------------------------------
@@ -956,6 +975,7 @@ class SystemAgent(BaseAgent):
         except FileNotFoundError:
             return {"success": False, "error": f"Registry key/value not found: {key_path}\\{value_name}"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def registry_write(self, key_path: str, value_name: str,
@@ -983,6 +1003,7 @@ class SystemAgent(BaseAgent):
             return {"success": True, "key": key_path,
                     "value_name": value_name, "data": str(data)}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def registry_delete(self, key_path: str, value_name: str = None) -> Dict:
@@ -1000,6 +1021,7 @@ class SystemAgent(BaseAgent):
                 winreg.DeleteKey(hive, subkey)
                 return {"success": True, "deleted_key": key_path}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def registry_list(self, key_path: str) -> Dict:
@@ -1036,6 +1058,7 @@ class SystemAgent(BaseAgent):
                 "values":  values,
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def registry_backup(self, key_path: str, output_file: str) -> Dict:
@@ -1237,7 +1260,8 @@ class SystemAgent(BaseAgent):
                     ip = resp.read().decode().strip()
                     if re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", ip):
                         return {"success": True, "public_ip": ip, "source": url}
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 continue
         return {"success": False, "error": "Could not determine public IP"}
 
@@ -1357,6 +1381,7 @@ class SystemAgent(BaseAgent):
                     "percent":  u.percent,
                 }
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 return {"success": False, "error": str(e)}
         import shutil as _shutil
         t, u, f = _shutil.disk_usage(path)
@@ -1412,6 +1437,7 @@ class SystemAgent(BaseAgent):
                     return {"success": True, "width": int(m.group(1)),
                             "height": int(m.group(2))}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             pass
         return {"success": False, "error": "Could not determine resolution"}
 
@@ -1599,6 +1625,7 @@ class SystemAgent(BaseAgent):
             import pyperclip
             return {"success": True, "text": pyperclip.paste()}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def set_clipboard(self, text: str) -> Dict:
@@ -1629,6 +1656,7 @@ class SystemAgent(BaseAgent):
             pyperclip.copy(text)
             return {"success": True}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def clear_clipboard(self) -> Dict:
@@ -1690,6 +1718,7 @@ class SystemAgent(BaseAgent):
             return {"success": True, "result": result,
                     "button": {1: "OK", 2: "Cancel", 6: "Yes", 7: "No"}.get(result, str(result))}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1872,7 +1901,8 @@ class SystemAgent(BaseAgent):
             events = json.loads(r.get("stdout", "[]") or "[]")
             if isinstance(events, dict):
                 events = [events]
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             pass
         return {
             "success": True,
@@ -1914,7 +1944,8 @@ class SystemAgent(BaseAgent):
             rules = json.loads(r.get("stdout", "[]") or "[]")
             if isinstance(rules, dict):
                 rules = [rules]
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             pass
         return {"success": True, "rules": rules, "count": len(rules)}
 
@@ -1953,7 +1984,8 @@ class SystemAgent(BaseAgent):
                 printers = json.loads(r.get("stdout", "[]") or "[]")
                 if isinstance(printers, dict):
                     printers = [printers]
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
             return {"success": True, "printers": printers}
         # Linux
@@ -2105,7 +2137,8 @@ class SystemAgent(BaseAgent):
                 if f.is_file():
                     total += f.stat().st_size
                     count += 1
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
         return {
             "success":   True,
@@ -2132,6 +2165,7 @@ class SystemAgent(BaseAgent):
                     total_bytes += size
                     deleted.append(str(f))
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 errors.append(str(e))
 
         return {

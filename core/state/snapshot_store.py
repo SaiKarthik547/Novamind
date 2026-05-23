@@ -53,7 +53,8 @@ class SnapshotStore:
             if temp_path.exists():
                 try:
                     temp_path.unlink()
-                except Exception:
+                except Exception as e:
+                    import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                     pass
             raise
 

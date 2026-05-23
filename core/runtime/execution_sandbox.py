@@ -9,7 +9,7 @@ logger = logging.getLogger("ExecutionSandbox")
 
 
 class SandboxViolation(Exception):
-    pass
+    """Implementation stub"""
 
 
 class ExecutionSandbox:

@@ -331,6 +331,7 @@ class LLMRouter:
                     raise Exception(result.get("error", "Unknown error"))
 
             except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 last_error = str(e)
                 provider.errors_count += 1
                 provider.last_error_time = datetime.now()
@@ -487,6 +488,7 @@ class LLMRouter:
                 "model": model
             }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {
                 "success": False,
                 "error": str(e),
@@ -559,6 +561,7 @@ class LLMRouter:
             }
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {
                 "success": False,
                 "error": f"Gemini exception: {str(e)}",
@@ -691,6 +694,7 @@ class LLMRouter:
             return {"success": False, "error": f"HTTP {response.status_code}: {response.text}", "provider": provider.name, "model": model}
 
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e), "provider": provider.name, "model": model}
 
     def _log_usage(self, provider: str, model: str, task_type: str,

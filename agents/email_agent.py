@@ -103,7 +103,8 @@ class ImapSession:
         if self._conn:
             try:
                 self._conn.logout()
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 pass
             self._conn = None
 
@@ -116,7 +117,8 @@ class ImapSession:
                 self._current_folder = folder
                 return True
             return False
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             self.connect()
             return False
 
@@ -314,6 +316,7 @@ class EmailAgent(BaseAgent):
                     results["imap_ok"] = False
                     results["success"] = False
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             results["imap_ok"]    = False
             results["imap_error"] = str(e)
             results["success"]    = False
@@ -334,6 +337,7 @@ class EmailAgent(BaseAgent):
                     results["smtp_ok"] = True
             results["smtp_server"] = f"{acct.smtp_host}:{acct.smtp_port}"
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             results["smtp_ok"]    = False
             results["smtp_error"] = str(e)
             results["success"]    = False
@@ -485,6 +489,7 @@ class EmailAgent(BaseAgent):
                 )
                 return {"success": True, "folder": folder, "bytes": len(raw)}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -545,6 +550,7 @@ class EmailAgent(BaseAgent):
                     "messages":  messages,
                 }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def read_email(self, uid: str, folder: str = "INBOX",
@@ -570,6 +576,7 @@ class EmailAgent(BaseAgent):
                 parsed = self._parse_message(msg_obj, uid)
                 return {"success": True, "message": parsed.__dict__}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def get_unread(self, folder: str = "INBOX", limit: int = 20,
@@ -603,6 +610,7 @@ class EmailAgent(BaseAgent):
                     "messages": messages,
                 }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def get_thread(self, message_id: str, folder: str = "INBOX",
@@ -632,6 +640,7 @@ class EmailAgent(BaseAgent):
                     })
                 return {"success": True, "thread": thread, "count": len(thread)}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -692,7 +701,8 @@ class EmailAgent(BaseAgent):
                             "date":    m.get("Date", ""),
                             "read":    "\\Seen" in flags,
                         })
-                    except Exception:
+                    except Exception as e:
+                        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                         pass
                 return {
                     "success":   True,
@@ -701,6 +711,7 @@ class EmailAgent(BaseAgent):
                     "messages":  results,
                 }
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -724,6 +735,7 @@ class EmailAgent(BaseAgent):
                     return {"success": True, "uid": uid, "moved_to": dest_folder}
                 return {"success": False, "error": r[1]}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def copy_email(self, uid: str, dest_folder: str,
@@ -738,6 +750,7 @@ class EmailAgent(BaseAgent):
                 r = sess._conn.copy(uid.encode(), dest_folder)
                 return {"success": r[0] == "OK", "uid": uid, "copied_to": dest_folder}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def delete_email(self, uid: str, folder: str = "INBOX",
@@ -759,6 +772,7 @@ class EmailAgent(BaseAgent):
                 sess._conn.expunge()
                 return {"success": True, "uid": uid, "permanent": permanent}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def delete_bulk(self, uids: List[str], folder: str = "INBOX",
@@ -777,6 +791,7 @@ class EmailAgent(BaseAgent):
                 deleted = len(uids)
             return {"success": True, "deleted": deleted}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e), "deleted": deleted}
 
     def _flag_op(self, uid: str, folder: str, flag: str,
@@ -790,6 +805,7 @@ class EmailAgent(BaseAgent):
                 sess._conn.store(uid.encode(), op, flag)
                 return {"success": True, "uid": uid, "flag": flag, "op": op}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def mark_read(self, uid: str, folder: str = "INBOX",
@@ -833,6 +849,7 @@ class EmailAgent(BaseAgent):
                             folders.append(name)
                 return {"success": True, "folders": folders, "count": len(folders)}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def create_folder(self, folder_name: str, from_account: str = None) -> Dict:
@@ -844,6 +861,7 @@ class EmailAgent(BaseAgent):
                 r = sess._conn.create(folder_name)
                 return {"success": r[0] == "OK", "folder": folder_name}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def delete_folder(self, folder_name: str, from_account: str = None) -> Dict:
@@ -855,6 +873,7 @@ class EmailAgent(BaseAgent):
                 r = sess._conn.delete(folder_name)
                 return {"success": r[0] == "OK", "folder": folder_name}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def rename_folder(self, old_name: str, new_name: str,
@@ -867,6 +886,7 @@ class EmailAgent(BaseAgent):
                 r = sess._conn.rename(old_name, new_name)
                 return {"success": r[0] == "OK", "old": old_name, "new": new_name}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -921,6 +941,7 @@ class EmailAgent(BaseAgent):
                         }
                 return {"success": False, "error": f"Attachment '{filename}' not found"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -952,9 +973,11 @@ class EmailAgent(BaseAgent):
                                 "total":  int(total.group(1))  if total  else 0,
                                 "unseen": int(unseen.group(1)) if unseen else 0,
                             }
-                    except Exception:
+                    except Exception as e:
+                        import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                         pass
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
         return {
@@ -974,6 +997,7 @@ class EmailAgent(BaseAgent):
                 r = sess._conn.getquotaroot("INBOX")
                 return {"success": True, "raw": str(r)}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def purge_deleted(self, folder: str = "INBOX",
@@ -988,6 +1012,7 @@ class EmailAgent(BaseAgent):
                 sess._conn.expunge()
                 return {"success": True, "folder": folder}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1029,6 +1054,7 @@ class EmailAgent(BaseAgent):
         except smtplib.SMTPException as e:
             return {"success": False, "error": f"SMTP error: {e}"}
         except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return {"success": False, "error": str(e)}
 
     def _build_mime_message(self, to: List[str], subject: str,
@@ -1091,7 +1117,8 @@ class EmailAgent(BaseAgent):
                 body_text = p.get_payload(decode=True).decode(
                     p.get_content_charset() or "utf-8", errors="replace"
                 )
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 body_text = str(p.get_payload())
 
         def _handle_html(p):
@@ -1101,7 +1128,8 @@ class EmailAgent(BaseAgent):
                 body_html = p.get_payload(decode=True).decode(
                     p.get_content_charset() or "utf-8", errors="replace"
                 )
-            except Exception:
+            except Exception as e:
+                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
                 body_html = str(p.get_payload())
 
         _TYPE_HANDLERS = {
@@ -1141,7 +1169,8 @@ class EmailAgent(BaseAgent):
     def _decode_header_str(header: str) -> str:
         try:
             return str(make_header(decode_header(header)))
-        except Exception:
+        except Exception as e:
+            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
             return header
 
     @staticmethod
