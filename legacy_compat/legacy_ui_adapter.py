@@ -6,9 +6,9 @@ import pyautogui
 from core.adapters.adapter_contract import ApplicationAdapter, AdapterState, VerificationMode
 from core.telemetry.telemetry_event import ReplayIntegrityLevel
 
-logger = logging.getLogger("PyAutoGUIAdapter")
+logger = logging.getLogger("LegacyUIAdapter")
 
-class PyAutoGUIAdapter(ApplicationAdapter):
+class LegacyUIAdapter(ApplicationAdapter):
     """
     DEPRECATED: Legacy compatibility wrapper for old GUI automation.
     Runs entirely in NON_DETERMINISTIC mode because it seizes the active desktop.
@@ -30,22 +30,23 @@ class PyAutoGUIAdapter(ApplicationAdapter):
         logger.warning("Attached NON_DETERMINISTIC legacy UI automation adapter.")
         return True
 
-    def execute(self, command: Dict[str, Any]) -> Any:
+    def execute(self, intent: 'ExecutionIntent') -> Any:
         self._state = AdapterState.EXECUTING
-        action = command.get("action")
+        # Execute pyautogui actions, e.g. click, type
+        operation = intent.operation
         
         # Explicit downgrade of execution lineage determinism
         logger.warning("Execution lineage downgraded: NON_DETERMINISTIC")
         
         try:
-            if action == "click":
-                x, y = command.get("x", 0), command.get("y", 0)
+            if operation == "click":
+                x, y = intent.payload.get("x", 0), intent.payload.get("y", 0)
                 pyautogui.click(x, y)
-            elif action == "type":
-                text = command.get("text", "")
-                pyautogui.typewrite(text)
-            elif action == "press":
-                key = command.get("key", "enter")
+            elif operation == "type":
+                text = intent.payload.get("text", "")
+                pyautogui.write(text)
+            elif operation == "press":
+                key = intent.payload.get("key", "")
                 pyautogui.press(key)
         except Exception as e:
             logger.error(f"Legacy UI failure: {e}")

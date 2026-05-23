@@ -37,12 +37,12 @@ class ChromeCDPAdapter(ApplicationAdapter):
         logger.debug("Attached to CDP Port")
         return True
 
-    def execute(self, command: Dict[str, Any]) -> Any:
+    def execute(self, intent: 'ExecutionIntent') -> Any:
         self._state = AdapterState.EXECUTING
         # Execute CDP command, e.g. Input.dispatchMouseEvent, Runtime.evaluate
-        action = command.get("action")
+        operation = intent.operation
         
-        if action == "navigate":
+        if operation == "navigate":
             self._navigation_epoch += 1
             self._dom_snapshot_epoch = 0 # Reset on navigation
             

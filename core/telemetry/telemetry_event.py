@@ -23,6 +23,15 @@ class DeterminismLevel(enum.Enum):
     PROBABILISTIC = "PROBABILISTIC"
     NON_DETERMINISTIC = "NON_DETERMINISTIC"
 
+class IntentLifecycleEvent(enum.Enum):
+    """Lineage tracking for intent semantics."""
+    INTENT_CREATED = "INTENT_CREATED"
+    INTENT_DISPATCHED = "INTENT_DISPATCHED"
+    INTENT_STARTED = "INTENT_STARTED"
+    INTENT_VERIFIED = "INTENT_VERIFIED"
+    INTENT_FAILED = "INTENT_FAILED"
+    INTENT_COMPENSATED = "INTENT_COMPENSATED"
+
 @dataclass
 class TelemetryEvent:
     """

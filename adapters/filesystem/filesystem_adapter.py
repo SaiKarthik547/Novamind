@@ -31,10 +31,10 @@ class FilesystemAdapter(ApplicationAdapter):
         self._state = AdapterState.ATTACHED
         return True
 
-    def execute(self, command: Dict[str, Any]) -> Any:
+    def execute(self, intent: 'ExecutionIntent') -> Any:
         self._state = AdapterState.EXECUTING
         
-        operation = command.get("operation")
+        operation = intent.operation
         # In full implementation, map operation to FSReplayClass
         # and enforce checkpointing for DESTRUCTIVE writes.
         

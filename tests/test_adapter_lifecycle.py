@@ -33,8 +33,19 @@ class TestAdapterLifecycle(unittest.TestCase):
         adapter = self.supervisor._active_adapters[worker_id]
         self.assertEqual(adapter.get_state(), AdapterState.ATTACHED)
         
+        from core.execution.execution_intent import ExecutionIntent, VerificationMode, RollbackMode
+        intent = ExecutionIntent(
+            adapter="chrome",
+            operation="navigate",
+            idempotent=True,
+            verification_mode=VerificationMode.SEMANTIC,
+            rollback_strategy=RollbackMode.NO_ROLLBACK,
+            capability_scope={},
+            payload={}
+        )
+    
         # Execute simulates state changes
-        res = adapter.execute({"action": "navigate"})
+        res = adapter.execute(intent)
         self.assertEqual(res["navigation_epoch"], 1)
         self.assertEqual(res["dom_epoch"], 0)
         self.assertEqual(adapter.get_state(), AdapterState.ATTACHED)

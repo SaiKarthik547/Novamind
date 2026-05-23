@@ -4,6 +4,7 @@ from typing import Dict, Any
 
 from core.execution.execution_intent import ExecutionIntent, IntentStatus
 from core.adapters.adapter_supervisor import AdapterSupervisor
+from core.contracts.intent_contracts import IntentContractRegistry
 
 logger = logging.getLogger("IntentDispatcher")
 
@@ -21,12 +22,20 @@ class IntentDispatcher:
         Synchronously blocks until the intent is executed by the adapter.
         Returns a dictionary mimicking a CompletedProcess or expected result.
         """
+        try:
+            IntentContractRegistry.validate_intent(intent)
+        except ValueError as e:
+            intent.status = IntentStatus.FAILED
+            intent.error = str(e)
+            logger.error(f"Intent Validation Failed: {e}")
+            return {"returncode": 1, "stdout": "", "stderr": str(e), "error": str(e)}
+
         intent.status = IntentStatus.EXECUTING
-        logger.debug(f"Dispatching Intent: {intent.action} -> {intent.target_adapter}")
+        logger.debug(f"Dispatching Intent: {intent.operation} -> {intent.adapter}")
         
-        # Determine the adapter (in a full kernel, this is dynamically assigned)
-        adapter_name = intent.target_adapter
-        worker_id = "agent_worker_legacy" # Mock worker assignment for Stage 1
+        # Determine the adapter
+        adapter_name = intent.adapter
+        worker_id = f"agent_worker_{adapter_name}" # Isolated per adapter type
         
         if worker_id not in self._supervisor._active_adapters:
             success = self._supervisor.assign_adapter(worker_id, adapter_name)
@@ -38,7 +47,7 @@ class IntentDispatcher:
         adapter = self._supervisor._active_adapters[worker_id]
         
         try:
-            result = adapter.execute(intent.payload)
+            result = adapter.execute(intent)
             intent.result = result
             intent.status = IntentStatus.COMPLETED
             
@@ -58,7 +67,7 @@ class IntentDispatcher:
         except Exception as e:
             intent.error = str(e)
             intent.status = IntentStatus.FAILED
-            logger.error(f"Intent failed: {e}")
+            logger.error(f"Intent execution failed: {e}")
             return {"returncode": 1, "stdout": "", "stderr": str(e), "error": str(e)}
 
 # Singleton for Stage 1 easy replacement

@@ -40,8 +40,8 @@ class ApplicationAdapter(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def execute(self, command: Dict[str, Any]) -> Any:
-        """Execute a deterministic operation against the target."""
+    def execute(self, intent: 'ExecutionIntent') -> Any:
+        """Execute a deterministic operation based on the intent."""
         raise NotImplementedError()
 
     @abstractmethod

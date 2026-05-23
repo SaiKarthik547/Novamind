@@ -39,15 +39,15 @@ class PTYAdapter(ApplicationAdapter):
         logger.debug(f"Attached to PTY Session {self._session_id}")
         return True
 
-    def execute(self, command: Dict[str, Any]) -> Any:
+    def execute(self, intent: 'ExecutionIntent') -> Any:
         self._state = AdapterState.EXECUTING
         
-        action = command.get("action")
-        if action == "resize":
+        operation = intent.operation
+        if operation == "resize":
             self._emit_frame("resize", b"")
-        elif action == "run_command":
+        elif operation == "run_command" or operation == "spawn":
             self._command_epoch += 1
-            cmd_str = command.get("cmd", "")
+            cmd_str = intent.payload.get("cmd", "")
             # Simulate execution and output
             self._emit_frame("stdout", b"simulated output")
             

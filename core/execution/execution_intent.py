@@ -11,6 +11,29 @@ class IntentStatus(Enum):
     FAILED = "FAILED"
     CANCELED = "CANCELED"
 
+class VerificationMode(Enum):
+    EXACT = "EXACT"              # Byte-identical verification
+    STRUCTURAL = "STRUCTURAL"    # Object shape/state verification
+    SEMANTIC = "SEMANTIC"        # Intended OS outcome verification
+    HEURISTIC = "HEURISTIC"      # Best-effort AI validation
+    NONE = "NONE"                # Fire-and-forget
+
+class RollbackMode(Enum):
+    TERMINATE_TREE = "TERMINATE_TREE"
+    REVERT_STATE = "REVERT_STATE"
+    NO_ROLLBACK = "NO_ROLLBACK"
+
+class IntentPriority(Enum):
+    BACKGROUND = 0
+    STANDARD = 1
+    HIGH = 2
+    CRITICAL = 3
+
+class IntentDeterminismLevel(Enum):
+    STRICT = "STRICT"
+    PROBABILISTIC = "PROBABILISTIC"
+    NON_DETERMINISTIC = "NON_DETERMINISTIC"
+
 @dataclass
 class ExecutionIntent:
     """
@@ -18,8 +41,13 @@ class ExecutionIntent:
     Agents emit Intents. They DO NOT execute them.
     Intents are serializable, replayable, and schedulable.
     """
-    target_adapter: str  # e.g., 'chrome', 'pty', 'filesystem'
-    action: str          # e.g., 'navigate', 'run_command', 'write_file'
+    adapter: str             # e.g., 'process', 'filesystem', 'registry'
+    operation: str           # e.g., 'spawn', 'write_file', 'set_key'
+    idempotent: bool         # Mandatory declaration for replay safety
+    
+    verification_mode: VerificationMode
+    rollback_strategy: RollbackMode
+    capability_scope: Dict[str, Any]
     payload: Dict[str, Any]
     
     intent_id: str = field(default_factory=lambda: str(uuid.uuid4()))
@@ -27,9 +55,9 @@ class ExecutionIntent:
     status: IntentStatus = IntentStatus.PENDING
     
     # Scheduling & Determinism
-    priority: int = 0
+    priority: IntentPriority = IntentPriority.STANDARD
+    determinism: IntentDeterminismLevel = IntentDeterminismLevel.PROBABILISTIC
     timeout_ms: int = 30000
-    idempotent: bool = False
     
     # Results
     result: Optional[Dict[str, Any]] = None
@@ -39,13 +67,17 @@ class ExecutionIntent:
         return {
             "intent_id": self.intent_id,
             "agent_id": self.agent_id,
-            "target_adapter": self.target_adapter,
-            "action": self.action,
+            "adapter": self.adapter,
+            "operation": self.operation,
+            "idempotent": self.idempotent,
+            "verification_mode": self.verification_mode.value,
+            "rollback_strategy": self.rollback_strategy.value,
+            "capability_scope": self.capability_scope,
             "payload": self.payload,
             "status": self.status.value,
-            "priority": self.priority,
+            "priority": self.priority.name,
+            "determinism": self.determinism.value,
             "timeout_ms": self.timeout_ms,
-            "idempotent": self.idempotent,
             "result": self.result,
             "error": self.error
         }

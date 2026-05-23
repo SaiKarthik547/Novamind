@@ -36,7 +36,11 @@ jobs:
 
     - name: Run Phase 12 Telemetry & Observability Tests
       run: |
-        pytest tests/test_telemetry_ordering.py tests/test_adapter_lifecycle.py tests/test_intent_dispatcher.py tests/test_godot_bridge.py -v
+        pytest tests/test_telemetry_ordering.py tests/test_adapter_lifecycle.py tests/test_intent_dispatcher.py tests/test_godot_bridge.py tests/test_intent_contracts.py -v
+
+    - name: Run Phase 13 Capabilities Tests
+      run: |
+        pytest tests/test_process_adapter.py tests/test_filesystem_adapter.py -v
 
     - name: Run Schema Validator
       run: |

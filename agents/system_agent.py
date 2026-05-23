@@ -1198,6 +1198,7 @@ class SystemAgent(BaseAgent):
                     record_type: str = "A") -> Dict:
         """Resolve hostname to IP(s)."""
         try:
+            # LEGACY_EXECUTION_PATH: Needs Intent Dispatcher Migration
             results = socket.getaddrinfo(hostname, None)
             ips = list({r[4][0] for r in results})
             return {"success": True, "hostname": hostname, "ips": ips}

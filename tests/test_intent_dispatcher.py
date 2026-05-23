@@ -7,6 +7,8 @@ from core.adapters.adapter_registry import ADAPTER_REGISTRY, AdapterCapabilityMa
 from adapters.shell.pty_adapter import PTYAdapter
 from core.telemetry.telemetry_event import DeterminismLevel
 
+from core.execution.execution_intent import ExecutionIntent, IntentStatus, VerificationMode, RollbackMode
+
 class DummyKernel:
     pass
 
@@ -22,11 +24,20 @@ class TestIntentDispatcher(unittest.TestCase):
                 "pty", PTYAdapter,
                 AdapterCapabilityManifest(["shell"], "STRUCTURAL", "BACKGROUND", False, DeterminismLevel.STRICT)
             )
+            
+        # Register test contract for intent dispatcher
+        from core.contracts.intent_contracts import IntentContractRegistry
+        IntentContractRegistry.register("pty", "run_command", ["cmd"], [], False)
+        IntentContractRegistry.register("nonexistent", "run_command", ["cmd"], [], False)
 
     def test_execute_sync_success(self):
         intent = ExecutionIntent(
-            target_adapter="pty",
-            action="run_command",
+            adapter="pty",
+            operation="run_command",
+            idempotent=False,
+            verification_mode=VerificationMode.SEMANTIC,
+            rollback_strategy=RollbackMode.NO_ROLLBACK,
+            capability_scope={},
             payload={"cmd": "echo hello"}
         )
         
@@ -38,8 +49,12 @@ class TestIntentDispatcher(unittest.TestCase):
 
     def test_execute_sync_unknown_adapter_fails(self):
         intent = ExecutionIntent(
-            target_adapter="nonexistent",
-            action="run_command",
+            adapter="nonexistent",
+            operation="run_command",
+            idempotent=False,
+            verification_mode=VerificationMode.SEMANTIC,
+            rollback_strategy=RollbackMode.NO_ROLLBACK,
+            capability_scope={},
             payload={"cmd": "echo hello"}
         )
         
