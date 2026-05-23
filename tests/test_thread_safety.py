@@ -48,7 +48,10 @@ def thread_worker(bridge: BridgeServer, worker_id: int, num_events: int):
             
     print(f"[Thread {worker_id}] Sent {success}/{num_events} messages safely.")
 
-async def main():
+import pytest
+
+@pytest.mark.asyncio
+async def test_thread_safety_storm():
     bridge = BridgeServer(host=HOST, port=PORT)
     await bridge.start()
     
@@ -72,12 +75,7 @@ async def main():
     expected = num_threads * events_per_thread
     
     print(f"\n[Result] Expected: {expected}, Received: {total_received}")
-    if total_received >= expected: # Might be slightly higher if heartbeat is received
-        print("[Result] SUCCESS: All threadsafe messages successfully marshalled across boundaries.")
-    else:
-        print("[Result] FAILED: Race condition detected. Messages dropped.")
-        
+    
     await bridge.stop()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    
+    assert total_received >= expected, "Race condition detected. Messages dropped."
