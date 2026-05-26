@@ -1,0 +1,7 @@
+../C:\Users\karth\OneDrive\Desktop\Novamind\core\runtime\agent_context.py: Imports 'subprocess'. All subprocess execution MUST route through KernelExecutionFacade via 'shell.execute'.
+../C:\Users\karth\OneDrive\Desktop\Novamind\core\runtime\brain.py: Imports 'subprocess'. All subprocess execution MUST route through KernelExecutionFacade via 'shell.execute'.
+../C:\Users\karth\OneDrive\Desktop\Novamind\core\runtime\capability_broker.py: Imports 'subprocess'. All subprocess execution MUST route through KernelExecutionFacade via 'shell.execute'.
+../C:\Users\karth\OneDrive\Desktop\Novamind\core\runtime\execution_sandbox.py: Imports 'subprocess'. All subprocess execution MUST route through KernelExecutionFacade via 'shell.execute'.
+../C:\Users\karth\OneDrive\Desktop\Novamind\core\runtime\resource_governor.py: Imports 'subprocess'. All subprocess execution MUST route through KernelExecutionFacade via 'shell.execute'.
+../C:\Users\karth\OneDrive\Desktop\Novamind\core\runtime\syscall_gate.py: Imports 'subprocess'. All subprocess execution MUST route through KernelExecutionFacade via 'shell.execute'.
+../C:\Users\karth\OneDrive\Desktop\Novamind\core\runtime\worker_runtime.py: Imports 'subprocess'. All subprocess execution MUST route through KernelExecutionFacade via 'shell.execute'.

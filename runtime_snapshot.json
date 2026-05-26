@@ -1,0 +1,141 @@
+{
+    "authority_graph": {
+        "runtime_fsm": "RuntimeKernel",
+        "wal_journal": "RecoveryJournal",
+        "lock_orchestration": "ResourceLockManager"
+    },
+    "capability_topology": {
+        "filesystem.read": {
+            "determinism_class": "DETERMINISTIC",
+            "replay_policy": "STRICT",
+            "rollback_policy": "IDEMPOTENT_RETRY",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": false,
+            "verification_mode": "STRICT_STATE_VERIFICATION"
+        },
+        "filesystem.write": {
+            "determinism_class": "DETERMINISTIC",
+            "replay_policy": "STRUCTURAL",
+            "rollback_policy": "COMPENSATE",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+        },
+        "filesystem.delete": {
+            "determinism_class": "DETERMINISTIC",
+            "replay_policy": "STRUCTURAL",
+            "rollback_policy": "NO_ROLLBACK",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+        },
+        "filesystem.mkdir": {
+            "determinism_class": "DETERMINISTIC",
+            "replay_policy": "STRUCTURAL",
+            "rollback_policy": "IDEMPOTENT_RETRY",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": false,
+            "verification_mode": "STRICT_STATE_VERIFICATION"
+        },
+        "process.spawn": {
+            "determinism_class": "SEMI_DETERMINISTIC",
+            "replay_policy": "STRUCTURAL",
+            "rollback_policy": "COMPENSATE",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+        },
+        "process.kill": {
+            "determinism_class": "SEMI_DETERMINISTIC",
+            "replay_policy": "STRUCTURAL",
+            "rollback_policy": "NO_ROLLBACK",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+        },
+        "network.http_request": {
+            "determinism_class": "SEMI_DETERMINISTIC",
+            "replay_policy": "OBSERVATIONAL",
+            "rollback_policy": "NO_ROLLBACK",
+            "authority_level": "ADAPTER",
+            "trust_level": "OBSERVATIONAL",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "OBSERVATIONAL_VERIFICATION"
+        },
+        "ui.mouse_click": {
+            "determinism_class": "NON_DETERMINISTIC",
+            "replay_policy": "SKIP",
+            "rollback_policy": "HUMAN_REQUIRED",
+            "authority_level": "LEGACY_BRIDGE",
+            "trust_level": "OBSERVATIONAL",
+            "requires_user_focus": true,
+            "allows_background_execution": false,
+            "side_effect_permanent": true,
+            "verification_mode": "OBSERVATIONAL_VERIFICATION"
+        },
+        "ui.keyboard_type": {
+            "determinism_class": "NON_DETERMINISTIC",
+            "replay_policy": "SKIP",
+            "rollback_policy": "HUMAN_REQUIRED",
+            "authority_level": "LEGACY_BRIDGE",
+            "trust_level": "OBSERVATIONAL",
+            "requires_user_focus": true,
+            "allows_background_execution": false,
+            "side_effect_permanent": true,
+            "verification_mode": "OBSERVATIONAL_VERIFICATION"
+        },
+        "ui.hotkey": {
+            "determinism_class": "NON_DETERMINISTIC",
+            "replay_policy": "SKIP",
+            "rollback_policy": "HUMAN_REQUIRED",
+            "authority_level": "LEGACY_BRIDGE",
+            "trust_level": "OBSERVATIONAL",
+            "requires_user_focus": true,
+            "allows_background_execution": false,
+            "side_effect_permanent": true,
+            "verification_mode": "OBSERVATIONAL_VERIFICATION"
+        },
+        "ui.screenshot": {
+            "determinism_class": "NON_DETERMINISTIC",
+            "replay_policy": "SKIP",
+            "rollback_policy": "NO_ROLLBACK",
+            "authority_level": "LEGACY_BRIDGE",
+            "trust_level": "OBSERVATIONAL",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": false,
+            "verification_mode": "OBSERVATIONAL_VERIFICATION"
+        },
+        "shell.execute": {
+            "determinism_class": "SEMI_DETERMINISTIC",
+            "replay_policy": "OBSERVATIONAL",
+            "rollback_policy": "NO_ROLLBACK",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+        }
+    }
+}

@@ -59,6 +59,24 @@ jobs:
       run: |
         pytest tests/test_kernel_convergence.py tests/test_adapter_lifecycle.py tests/test_intent_dispatcher.py tests/test_intent_contracts.py tests/test_runtime_lifecycle.py -v
 
+    - name: "[L4.1] Phase 14 Semantic Invariants"
+      run: |
+        pytest tests/test_runtime_invariants.py -v
+
+    - name: "[L4.2] Phase 14 Idempotency & Replay Integrity"
+      run: |
+        pytest tests/test_replay_idempotency.py tests/test_replay_integrity.py -v
+
+    - name: "[L4.3] Phase 14 Scheduler Determinism"
+      run: |
+        pytest tests/test_scheduler_determinism.py -v
+
+    - name: "[L4.4] Semantic Drift & Legacy Execution Certification"
+      run: |
+        python tools/audit_semantic_drift.py
+        python tools/runtime_semantic_snapshot.py --output runtime_snapshot.json
+        python tools/audit_legacy_execution.py --baseline legacy_baseline.txt
+
     - name: "[L5] Telemetry + Observability + Binary Framing"
       run: |
         pytest tests/test_telemetry_ordering.py tests/test_binary_framing.py tests/test_reconnect_during_partial_frame.py tests/test_godot_bridge.py -v

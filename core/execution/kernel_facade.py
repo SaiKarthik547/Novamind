@@ -146,6 +146,7 @@ class KernelExecutionFacade:
             "capability": capability,
             "determinism_class": defn.determinism_class.value,
             "replay_policy": defn.replay_policy.value,
+            "trust_level": defn.trust_level.value,
             "authority_origin": authority_origin,
             "idempotent": idempotent,
             "commutative": commutative,
@@ -246,7 +247,7 @@ class KernelExecutionFacade:
         )
 
         try:
-            from core.execution.runtime_metrics import RuntimeMetrics
+            from core.observability.runtime_metrics import RuntimeMetrics
             RuntimeMetrics.get_instance().record_intent_completion(final_result)
         except Exception as e:
             logger.warning(f"Failed to record runtime metrics: {e}")

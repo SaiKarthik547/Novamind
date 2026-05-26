@@ -4,7 +4,7 @@ import unittest
 
 from core.telemetry.telemetry_event import TelemetryEvent, TelemetryClass, ReplayIntegrityLevel
 from core.telemetry.telemetry_bus import TelemetryBus, TelemetryOverflowPolicy
-from core.telemetry.runtime_metrics import RuntimeMetrics, WorkerMetricsSnapshot
+from core.observability.runtime_metrics import RuntimeMetrics, WorkerMetricsSnapshot
 
 class TestTelemetryOrdering(unittest.TestCase):
     def test_metrics_ring_buffer(self):

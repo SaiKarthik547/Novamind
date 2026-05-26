@@ -56,6 +56,12 @@ class AuthorityLevel(str, Enum):
     UNSAFE_RUNTIME = "UNSAFE_RUNTIME"  # Direct agent call — FORBIDDEN in converged state
 
 
+class CapabilityTrustLevel(str, Enum):
+    """How much the runtime trusts this capability to influence state."""
+    HIGH_AUTHORITY = "HIGH_AUTHORITY" # Kernel primitives, filesystem, etc.
+    OBSERVATIONAL = "OBSERVATIONAL"   # UI adapters, read-only scripts, browser interaction.
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Capability Definition
 # ─────────────────────────────────────────────────────────────────────────────
@@ -68,6 +74,7 @@ class CapabilityDefinition:
     replay_policy: ReplayPolicy
     rollback_policy: RollbackPolicy
     authority_level: AuthorityLevel
+    trust_level: CapabilityTrustLevel  # Phase 14D: Prevents authority escalation
     requires_user_focus: bool     # Must the user session be in foreground?
     allows_background_execution: bool  # Can this run headlessly?
     side_effect_permanent: bool   # Can the side effect ever be undone?
@@ -87,6 +94,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.STRICT,
         rollback_policy=RollbackPolicy.IDEMPOTENT_RETRY,
         authority_level=AuthorityLevel.ADAPTER,
+        trust_level=CapabilityTrustLevel.HIGH_AUTHORITY,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=False,
@@ -98,6 +106,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.STRUCTURAL,
         rollback_policy=RollbackPolicy.COMPENSATE,
         authority_level=AuthorityLevel.ADAPTER,
+        trust_level=CapabilityTrustLevel.HIGH_AUTHORITY,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=True,
@@ -109,6 +118,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.STRUCTURAL,
         rollback_policy=RollbackPolicy.NO_ROLLBACK,
         authority_level=AuthorityLevel.ADAPTER,
+        trust_level=CapabilityTrustLevel.HIGH_AUTHORITY,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=True,
@@ -120,6 +130,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.STRUCTURAL,
         rollback_policy=RollbackPolicy.IDEMPOTENT_RETRY,
         authority_level=AuthorityLevel.ADAPTER,
+        trust_level=CapabilityTrustLevel.HIGH_AUTHORITY,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=False,
@@ -133,6 +144,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.STRUCTURAL,
         rollback_policy=RollbackPolicy.COMPENSATE,
         authority_level=AuthorityLevel.ADAPTER,
+        trust_level=CapabilityTrustLevel.HIGH_AUTHORITY,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=True,
@@ -144,6 +156,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.STRUCTURAL,
         rollback_policy=RollbackPolicy.NO_ROLLBACK,
         authority_level=AuthorityLevel.ADAPTER,
+        trust_level=CapabilityTrustLevel.HIGH_AUTHORITY,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=True,
@@ -157,6 +170,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.OBSERVATIONAL,
         rollback_policy=RollbackPolicy.NO_ROLLBACK,
         authority_level=AuthorityLevel.ADAPTER,
+        trust_level=CapabilityTrustLevel.OBSERVATIONAL,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=True,
@@ -170,6 +184,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.SKIP,
         rollback_policy=RollbackPolicy.HUMAN_REQUIRED,
         authority_level=AuthorityLevel.LEGACY_BRIDGE,
+        trust_level=CapabilityTrustLevel.OBSERVATIONAL,
         requires_user_focus=True,
         allows_background_execution=False,
         side_effect_permanent=True,
@@ -181,6 +196,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.SKIP,
         rollback_policy=RollbackPolicy.HUMAN_REQUIRED,
         authority_level=AuthorityLevel.LEGACY_BRIDGE,
+        trust_level=CapabilityTrustLevel.OBSERVATIONAL,
         requires_user_focus=True,
         allows_background_execution=False,
         side_effect_permanent=True,
@@ -192,6 +208,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.SKIP,
         rollback_policy=RollbackPolicy.HUMAN_REQUIRED,
         authority_level=AuthorityLevel.LEGACY_BRIDGE,
+        trust_level=CapabilityTrustLevel.OBSERVATIONAL,
         requires_user_focus=True,
         allows_background_execution=False,
         side_effect_permanent=True,
@@ -203,6 +220,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.SKIP,
         rollback_policy=RollbackPolicy.NO_ROLLBACK,
         authority_level=AuthorityLevel.LEGACY_BRIDGE,
+        trust_level=CapabilityTrustLevel.OBSERVATIONAL,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=False,
@@ -216,6 +234,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
         replay_policy=ReplayPolicy.OBSERVATIONAL,
         rollback_policy=RollbackPolicy.NO_ROLLBACK,
         authority_level=AuthorityLevel.ADAPTER,
+        trust_level=CapabilityTrustLevel.HIGH_AUTHORITY,
         requires_user_focus=False,
         allows_background_execution=True,
         side_effect_permanent=True,

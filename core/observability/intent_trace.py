@@ -10,8 +10,12 @@ logger = logging.getLogger("IntentTrace")
 
 class IntentTrace:
     """
-    P13G-2: Structured debugging and observability for Intent execution.
+    P14E-2: Structured debugging and observability for Intent execution.
     Maintains a deterministic replay log of events.
+    
+    OBSERVABILITY ISOLATION LAW:
+    This class must never mutate runtime state or alter execution semantics.
+    It is strictly a passive trace collector.
     """
     def __init__(self, intent_id: str):
         self.intent_id = intent_id
