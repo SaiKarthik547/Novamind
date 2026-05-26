@@ -20,11 +20,14 @@ class SemanticAuthorityRegistry:
     """
     _instance = None
     _owners: Dict[str, Any] = {}
+    _lock = __import__("threading").RLock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._owners = {}
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._owners = {}
         return cls._instance
 
     @classmethod
@@ -33,17 +36,18 @@ class SemanticAuthorityRegistry:
         Formally registers a class or module as the singular authority over a given domain.
         """
         registry = cls()
-        if domain in registry._owners:
-            existing = registry._owners[domain]
-            if existing is not authority:
-                name = getattr(authority, "__name__", str(authority))
-                existing_name = getattr(existing, "__name__", str(existing))
-                raise SemanticOwnershipViolation(
-                    f"Semantic Ownership Law Violation! Domain '{domain}' is already owned by {existing_name}. "
-                    f"Cannot register {name}."
-                )
-        registry._owners[domain] = authority
-        
+        with cls._lock:
+            if domain in registry._owners:
+                existing = registry._owners[domain]
+                if existing is not authority:
+                    name = getattr(authority, "__name__", str(authority))
+                    existing_name = getattr(existing, "__name__", str(existing))
+                    raise SemanticOwnershipViolation(
+                        f"Semantic Ownership Law Violation! Domain '{domain}' is already owned by {existing_name}. "
+                        f"Cannot register {name}."
+                    )
+            registry._owners[domain] = authority
+            
         name = getattr(authority, "__name__", str(authority))
         logger.debug(f"Registered Authority: {name} owns domain '{domain}'")
 
@@ -51,9 +55,10 @@ class SemanticAuthorityRegistry:
     def get_owner(cls, domain: str) -> Any:
         """Returns the registered authority for a domain."""
         registry = cls()
-        if domain not in registry._owners:
-            raise SemanticOwnershipViolation(f"Domain '{domain}' has no registered owner.")
-        return registry._owners[domain]
+        with cls._lock:
+            if domain not in registry._owners:
+                raise SemanticOwnershipViolation(f"Domain '{domain}' has no registered owner.")
+            return registry._owners[domain]
 
     @classmethod
     def verify_ownership(cls, domain: str, claimant: Any) -> bool:
@@ -67,13 +72,15 @@ class SemanticAuthorityRegistry:
     def snapshot(cls) -> Dict[str, str]:
         """Returns a snapshot of the current ownership topology."""
         registry = cls()
-        return {
-            domain: getattr(auth, "__name__", str(auth)) 
-            for domain, auth in registry._owners.items()
-        }
+        with cls._lock:
+            return {
+                domain: getattr(auth, "__name__", str(auth)) 
+                for domain, auth in registry._owners.items()
+            }
 
     @classmethod
     def clear_for_testing(cls) -> None:
         """Testing utility to clear the registry."""
         registry = cls()
-        registry._owners.clear()
+        with cls._lock:
+            registry._owners.clear()

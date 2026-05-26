@@ -5,28 +5,6 @@
         "lock_orchestration": "ResourceLockManager"
     },
     "capability_topology": {
-        "filesystem.read": {
-            "determinism_class": "DETERMINISTIC",
-            "replay_policy": "STRICT",
-            "rollback_policy": "IDEMPOTENT_RETRY",
-            "authority_level": "ADAPTER",
-            "trust_level": "HIGH_AUTHORITY",
-            "requires_user_focus": false,
-            "allows_background_execution": true,
-            "side_effect_permanent": false,
-            "verification_mode": "STRICT_STATE_VERIFICATION"
-        },
-        "filesystem.write": {
-            "determinism_class": "DETERMINISTIC",
-            "replay_policy": "STRUCTURAL",
-            "rollback_policy": "COMPENSATE",
-            "authority_level": "ADAPTER",
-            "trust_level": "HIGH_AUTHORITY",
-            "requires_user_focus": false,
-            "allows_background_execution": true,
-            "side_effect_permanent": true,
-            "verification_mode": "SIDE_EFFECT_VERIFICATION"
-        },
         "filesystem.delete": {
             "determinism_class": "DETERMINISTIC",
             "replay_policy": "STRUCTURAL",
@@ -49,21 +27,21 @@
             "side_effect_permanent": false,
             "verification_mode": "STRICT_STATE_VERIFICATION"
         },
-        "process.spawn": {
-            "determinism_class": "SEMI_DETERMINISTIC",
-            "replay_policy": "STRUCTURAL",
-            "rollback_policy": "COMPENSATE",
+        "filesystem.read": {
+            "determinism_class": "DETERMINISTIC",
+            "replay_policy": "STRICT",
+            "rollback_policy": "IDEMPOTENT_RETRY",
             "authority_level": "ADAPTER",
             "trust_level": "HIGH_AUTHORITY",
             "requires_user_focus": false,
             "allows_background_execution": true,
-            "side_effect_permanent": true,
-            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+            "side_effect_permanent": false,
+            "verification_mode": "STRICT_STATE_VERIFICATION"
         },
-        "process.kill": {
-            "determinism_class": "SEMI_DETERMINISTIC",
+        "filesystem.write": {
+            "determinism_class": "DETERMINISTIC",
             "replay_policy": "STRUCTURAL",
-            "rollback_policy": "NO_ROLLBACK",
+            "rollback_policy": "COMPENSATE",
             "authority_level": "ADAPTER",
             "trust_level": "HIGH_AUTHORITY",
             "requires_user_focus": false,
@@ -82,7 +60,40 @@
             "side_effect_permanent": true,
             "verification_mode": "OBSERVATIONAL_VERIFICATION"
         },
-        "ui.mouse_click": {
+        "process.kill": {
+            "determinism_class": "SEMI_DETERMINISTIC",
+            "replay_policy": "STRUCTURAL",
+            "rollback_policy": "NO_ROLLBACK",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+        },
+        "process.spawn": {
+            "determinism_class": "SEMI_DETERMINISTIC",
+            "replay_policy": "STRUCTURAL",
+            "rollback_policy": "COMPENSATE",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+        },
+        "shell.execute": {
+            "determinism_class": "SEMI_DETERMINISTIC",
+            "replay_policy": "OBSERVATIONAL",
+            "rollback_policy": "NO_ROLLBACK",
+            "authority_level": "ADAPTER",
+            "trust_level": "HIGH_AUTHORITY",
+            "requires_user_focus": false,
+            "allows_background_execution": true,
+            "side_effect_permanent": true,
+            "verification_mode": "SIDE_EFFECT_VERIFICATION"
+        },
+        "ui.hotkey": {
             "determinism_class": "NON_DETERMINISTIC",
             "replay_policy": "SKIP",
             "rollback_policy": "HUMAN_REQUIRED",
@@ -104,7 +115,7 @@
             "side_effect_permanent": true,
             "verification_mode": "OBSERVATIONAL_VERIFICATION"
         },
-        "ui.hotkey": {
+        "ui.mouse_click": {
             "determinism_class": "NON_DETERMINISTIC",
             "replay_policy": "SKIP",
             "rollback_policy": "HUMAN_REQUIRED",
@@ -125,17 +136,6 @@
             "allows_background_execution": true,
             "side_effect_permanent": false,
             "verification_mode": "OBSERVATIONAL_VERIFICATION"
-        },
-        "shell.execute": {
-            "determinism_class": "SEMI_DETERMINISTIC",
-            "replay_policy": "OBSERVATIONAL",
-            "rollback_policy": "NO_ROLLBACK",
-            "authority_level": "ADAPTER",
-            "trust_level": "HIGH_AUTHORITY",
-            "requires_user_focus": false,
-            "allows_background_execution": true,
-            "side_effect_permanent": true,
-            "verification_mode": "SIDE_EFFECT_VERIFICATION"
         }
     }
 }

@@ -1,6 +1,10 @@
 import json
 import os
 import sys
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("SemanticSnapshot")
 
 # Ensure core modules are available
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -20,7 +24,7 @@ def take_semantic_snapshot() -> dict:
     
     # 2. Capability Topology
     capability_topology = {}
-    for name in CAPABILITY_REGISTRY.all_capabilities():
+    for name in sorted(CAPABILITY_REGISTRY.all_capabilities()):
         cap = CAPABILITY_REGISTRY.get(name)
         capability_topology[name] = {
             "determinism_class": cap.determinism_class.value,
@@ -51,11 +55,22 @@ def main():
         from core.execution.runtime_kernel import RuntimeKernel
         from core.execution.recovery_journal import RecoveryJournal
         from core.execution.resource_lock_manager import ResourceLockManager
-        SemanticAuthorityRegistry.register("runtime_fsm", RuntimeKernel)
-        SemanticAuthorityRegistry.register("wal_journal", RecoveryJournal)
-        SemanticAuthorityRegistry.register("lock_orchestration", ResourceLockManager)
+        from core.runtime.semantic_authority_registry import SemanticOwnershipViolation
+        
+        try:
+            SemanticAuthorityRegistry.register("runtime_fsm", RuntimeKernel)
+        except SemanticOwnershipViolation: pass
+        
+        try:
+            SemanticAuthorityRegistry.register("wal_journal", RecoveryJournal)
+        except SemanticOwnershipViolation: pass
+        
+        try:
+            SemanticAuthorityRegistry.register("lock_orchestration", ResourceLockManager)
+        except SemanticOwnershipViolation: pass
+            
     except Exception as e:
-        pass # Ignore if already registered
+        logger.warning(f"Failed to prepopulate snapshot authority registry: {e}")
         
     current_snapshot = take_semantic_snapshot()
     
