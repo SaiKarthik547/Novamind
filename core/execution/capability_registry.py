@@ -36,8 +36,10 @@ class ReplayPolicy(str, Enum):
     """How the WAL treats this capability during replay."""
     STRICT = "STRICT"          # Must reproduce bit-identical outcome
     STRUCTURAL = "STRUCTURAL"  # Structural equivalence is sufficient
+    CAUSAL = "CAUSAL"          # Dependency-equivalent replay
     OBSERVATIONAL = "OBSERVATIONAL"  # Record only; no replay assertion
-    SKIP = "SKIP"              # Do not replay (NON_DETERMINISTIC actions)
+    BEST_EFFORT = "BEST_EFFORT" # Partial reconstruction
+    NON_REPLAYABLE = "NON_REPLAYABLE" # No guarantees (formerly SKIP)
 
 
 class RollbackPolicy(str, Enum):
@@ -181,7 +183,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
     "ui.mouse_click": CapabilityDefinition(
         capability_name="ui.mouse_click",
         determinism_class=DeterminismClass.NON_DETERMINISTIC,
-        replay_policy=ReplayPolicy.SKIP,
+        replay_policy=ReplayPolicy.NON_REPLAYABLE,
         rollback_policy=RollbackPolicy.HUMAN_REQUIRED,
         authority_level=AuthorityLevel.LEGACY_BRIDGE,
         trust_level=CapabilityTrustLevel.OBSERVATIONAL,
@@ -193,7 +195,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
     "ui.keyboard_type": CapabilityDefinition(
         capability_name="ui.keyboard_type",
         determinism_class=DeterminismClass.NON_DETERMINISTIC,
-        replay_policy=ReplayPolicy.SKIP,
+        replay_policy=ReplayPolicy.NON_REPLAYABLE,
         rollback_policy=RollbackPolicy.HUMAN_REQUIRED,
         authority_level=AuthorityLevel.LEGACY_BRIDGE,
         trust_level=CapabilityTrustLevel.OBSERVATIONAL,
@@ -205,7 +207,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
     "ui.hotkey": CapabilityDefinition(
         capability_name="ui.hotkey",
         determinism_class=DeterminismClass.NON_DETERMINISTIC,
-        replay_policy=ReplayPolicy.SKIP,
+        replay_policy=ReplayPolicy.NON_REPLAYABLE,
         rollback_policy=RollbackPolicy.HUMAN_REQUIRED,
         authority_level=AuthorityLevel.LEGACY_BRIDGE,
         trust_level=CapabilityTrustLevel.OBSERVATIONAL,
@@ -217,7 +219,7 @@ _CAPABILITIES: Dict[str, CapabilityDefinition] = {
     "ui.screenshot": CapabilityDefinition(
         capability_name="ui.screenshot",
         determinism_class=DeterminismClass.NON_DETERMINISTIC,
-        replay_policy=ReplayPolicy.SKIP,
+        replay_policy=ReplayPolicy.NON_REPLAYABLE,
         rollback_policy=RollbackPolicy.NO_ROLLBACK,
         authority_level=AuthorityLevel.LEGACY_BRIDGE,
         trust_level=CapabilityTrustLevel.OBSERVATIONAL,

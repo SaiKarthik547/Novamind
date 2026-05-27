@@ -1,69 +1,142 @@
-import logging
-from enum import Enum
-from typing import Callable, Dict, Any
+"""
+core/execution/verification_semantics.py
 
-from core.execution.execution_intent import ExecutionIntent
+Phase 15A.5: Async Execution & Passive Verification Semantics.
+Decouples execution dispatch success from actual runtime mutation success.
+Replaces self-certifying execution with rigorous, independent observation.
+"""
+
+import time
+import logging
+import threading
+from typing import Optional, Any, Callable
+from dataclasses import dataclass
+from abc import ABC, abstractmethod
+
 from core.execution.intent_result import IntentResult
-from core.execution.verification_taxonomy import VerificationMode
+from core.execution.execution_intent import IntentStatus
 
 logger = logging.getLogger("VerificationSemantics")
 
-class ReplayTrustLevel(Enum):
-    """
-    P13E-3: Decoupled ReplayTrustLevel.
-    Classifies the trust we have in a replayed intent based on verification outcomes.
-    """
-    UNTRUSTED = "UNTRUSTED"           # Replay failed or was not verified
-    OBSERVATIONAL = "OBSERVATIONAL"   # Observed similar side effects but no guarantee
-    VERIFIED = "VERIFIED"             # Side effects strictly matched
-    BIT_IDENTICAL = "BIT_IDENTICAL"   # Output and state match exactly
+class VerificationError(Exception):
+    """Raised when passive verification detects that expected state mutation did not occur."""
+    pass
 
-VerificationCallback = Callable[[ExecutionIntent, IntentResult], bool]
-
-class VerifierRegistry:
+class PassiveVerifier(ABC):
     """
-    P13E-1 & P13E-2: Registry of domain-specific verifiers.
+    Interface for independent verification domains.
+    Implementations must NEVER mutate state, only observe it.
     """
-    _verifiers: Dict[str, VerificationCallback] = {}
-
-    @classmethod
-    def register(cls, capability: str, callback: VerificationCallback):
-        cls._verifiers[capability] = callback
-
-    @classmethod
-    def verify(cls, intent: ExecutionIntent, result: IntentResult) -> bool:
+    
+    @abstractmethod
+    def verify_mutation(self, target_hwnd: Optional[int], pre_state: Any, timeout: float) -> bool:
         """
-        Runs the registered verifier for the given capability.
-        Returns True if successful or BEST_EFFORT / NONE mode, False if verification fails.
+        Polls or observes the runtime state until the expected mutation completes,
+        or the timeout expires.
         """
-        # If no verification is requested, it passes automatically
-        if intent.verification_mode in (VerificationMode.NONE, VerificationMode.BEST_EFFORT):
-            return True
+        pass
 
-        if intent.verification_mode == VerificationMode.HUMAN_CONFIRMED:
-            # Human confirmation is currently an interactive boundary, assume True for automation
-            # unless a human explicitly marked it failed.
-            return True
-
-        verifier = cls._verifiers.get(intent.capability_scope.get("capability", ""))
+@dataclass
+class AsyncExecutionFuture:
+    """
+    Represents an intent that has been successfully dispatched to the OS layer,
+    but whose actual side-effects (mutations) have not yet been observed.
+    """
+    intent_id: str
+    target_hwnd: Optional[int]
+    dispatch_success: bool
+    dispatch_metrics: dict
+    pre_state_snapshot: Any
+    verifier: Optional[PassiveVerifier]
+    
+    _completion_event: threading.Event = threading.Event()
+    _final_result: Optional[IntentResult] = None
+    
+    def resolve(self, result: IntentResult) -> None:
+        """Called when verification successfully concludes."""
+        self._final_result = result
+        self._completion_event.set()
         
-        if not verifier:
-            logger.warning(f"No verifier registered for capability: {intent.capability_scope.get('capability', '')}. Passing by default.")
-            return True
+    def wait(self, timeout: float) -> IntentResult:
+        """
+        Blocks the execution caller until the passive verifier confirms the state mutation.
+        """
+        if not self._completion_event.wait(timeout=timeout):
+            logger.warning(f"[AsyncFuture] Intent {self.intent_id} timed out during passive verification.")
+            return IntentResult(
+                intent_id=self.intent_id,
+                status=IntentStatus.FAILED,
+                success=False,
+                payload={},
+                error=f"Verification watchdog timeout ({timeout}s) exceeded.",
+                metrics=self.dispatch_metrics
+            )
+        return self._final_result
+
+class VerificationCoordinator:
+    """
+    Spawns background watchers to verify async execution futures.
+    """
+    _instance = None
+    _singleton_lock = threading.Lock()
+
+    @classmethod
+    def get_instance(cls) -> 'VerificationCoordinator':
+        with cls._singleton_lock:
+            if cls._instance is None:
+                cls._instance = cls()
+            return cls._instance
             
-        try:
-            return verifier(intent, result)
-        except Exception as e:
-            logger.error(f"Verification failed with exception: {e}")
-            return False
+    def verify_future(self, future: AsyncExecutionFuture, timeout: float) -> None:
+        """
+        Spawns a thread to wait for the passive verifier.
+        """
+        if not future.dispatch_success or future.verifier is None:
+            # If dispatch failed, or no verifier is provided, resolve immediately
+            future.resolve(IntentResult(
+                intent_id=future.intent_id,
+                status=IntentStatus.COMPLETED if future.dispatch_success else IntentStatus.FAILED,
+                success=future.dispatch_success,
+                payload={},
+                metrics=future.dispatch_metrics
+            ))
+            return
 
-# P13E-2: Domain-specific verifiers
-def filesystem_write_verifier(intent: ExecutionIntent, result: IntentResult) -> bool:
-    """Verifies that the written file exists."""
-    import os
-    path = intent.payload.get("path")
-    if path and os.path.exists(path):
-        return True
-    return False
+        def _watchdog():
+            start = time.monotonic()
+            try:
+                success = future.verifier.verify_mutation(future.target_hwnd, future.pre_state_snapshot, timeout)
+                duration = time.monotonic() - start
+                
+                metrics = dict(future.dispatch_metrics)
+                metrics["verification_duration_ms"] = int(duration * 1000)
+                
+                if success:
+                    future.resolve(IntentResult(
+                        intent_id=future.intent_id,
+                        status=IntentStatus.COMPLETED,
+                        success=True,
+                        payload={},
+                        metrics=metrics
+                    ))
+                else:
+                    future.resolve(IntentResult(
+                        intent_id=future.intent_id,
+                        status=IntentStatus.FAILED,
+                        success=False,
+                        payload={},
+                        error="Passive verification failed. State did not mutate as expected.",
+                        metrics=metrics
+                    ))
+            except Exception as e:
+                logger.error(f"[VerificationCoordinator] Verifier crashed for {future.intent_id}: {e}", exc_info=True)
+                future.resolve(IntentResult(
+                    intent_id=future.intent_id,
+                    status=IntentStatus.FAILED,
+                    success=False,
+                    payload={},
+                    error=f"Verifier crash: {e}",
+                    metrics=future.dispatch_metrics
+                ))
 
-VerifierRegistry.register("filesystem.write", filesystem_write_verifier)
+        threading.Thread(target=_watchdog, daemon=True, name=f"Verifier_{future.intent_id[:8]}").start()

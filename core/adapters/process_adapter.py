@@ -103,9 +103,33 @@ class ProcessAdapter(ApplicationAdapter):
             }
 
     def _execute_kill(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        # Implementation for killing a process by PID would go here if we tracked async tasks
-        # For now, spawn is synchronous via subprocess.run
-        return {"status": "unsupported_in_sync_mode"}
+        """Kills a process by PID."""
+        pid = payload.get("pid")
+        if not pid:
+            return {"error": "No PID provided for kill operation"}
+            
+        try:
+            import psutil
+            try:
+                proc = psutil.Process(int(pid))
+                proc.kill()
+                return {"status": "success", "pid": pid}
+            except psutil.NoSuchProcess:
+                return {"error": f"Process {pid} not found"}
+            except psutil.AccessDenied:
+                return {"error": f"Access denied to kill {pid}"}
+        except ImportError:
+            # Fallback if psutil is not available
+            import os
+            import subprocess
+            try:
+                if os.name == 'nt':
+                    subprocess.run(["taskkill", "/F", "/PID", str(pid)], check=True, capture_output=True)
+                else:
+                    subprocess.run(["kill", "-9", str(pid)], check=True, capture_output=True)
+                return {"status": "success", "pid": pid, "note": "Used fallback shell kill"}
+            except Exception as e:
+                return {"error": f"Fallback kill failed: {e}"}
 
     def verify(self, mode: VerificationMode) -> bool:
         self._state = AdapterState.VERIFYING

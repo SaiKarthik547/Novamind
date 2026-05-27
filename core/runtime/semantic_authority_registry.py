@@ -21,6 +21,9 @@ class SemanticAuthorityRegistry:
     _instance = None
     _owners: Dict[str, Any] = {}
     _lock = __import__("threading").RLock()
+    _frozen: bool = False
+    _topology_generation_hash: str = ""
+    _epoch_id: str = ""
 
     def __new__(cls):
         if cls._instance is None:
@@ -28,6 +31,10 @@ class SemanticAuthorityRegistry:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
                     cls._owners = {}
+                    cls._frozen = False
+                    cls._topology_generation_hash = ""
+                    import uuid
+                    cls._epoch_id = str(uuid.uuid4())
         return cls._instance
 
     @classmethod
@@ -37,6 +44,11 @@ class SemanticAuthorityRegistry:
         """
         registry = cls()
         with cls._lock:
+            if registry._frozen:
+                raise SemanticOwnershipViolation(
+                    f"Semantic Ownership Law Violation! Topology is frozen. Cannot register domain '{domain}'."
+                )
+                
             if domain in registry._owners:
                 existing = registry._owners[domain]
                 if existing is not authority:
@@ -50,6 +62,40 @@ class SemanticAuthorityRegistry:
             
         name = getattr(authority, "__name__", str(authority))
         logger.debug(f"Registered Authority: {name} owns domain '{domain}'")
+
+    @classmethod
+    def freeze_topology(cls) -> str:
+        """
+        Locks the topology. No further runtime authority assignments can be made.
+        Returns the generation hash of the topology.
+        """
+        import hashlib
+        import json
+        registry = cls()
+        with cls._lock:
+            if registry._frozen:
+                return registry._topology_generation_hash
+                
+            registry._frozen = True
+            
+            # Compute stable hash
+            sorted_owners = {d: getattr(registry._owners[d], "__name__", str(registry._owners[d])) for d in sorted(registry._owners.keys())}
+            hash_input = json.dumps(sorted_owners, sort_keys=True).encode("utf-8")
+            registry._topology_generation_hash = hashlib.sha256(hash_input).hexdigest()
+            logger.info(f"Topology Frozen. Generation Hash: {registry._topology_generation_hash}")
+            return registry._topology_generation_hash
+            
+    @classmethod
+    def get_topology_hash(cls) -> str:
+        registry = cls()
+        with cls._lock:
+            if not registry._frozen:
+                raise RuntimeError("Topology not frozen yet.")
+            return registry._topology_generation_hash
+            
+    @classmethod
+    def get_epoch_id(cls) -> str:
+        return cls()._epoch_id
 
     @classmethod
     def get_owner(cls, domain: str) -> Any:
@@ -69,13 +115,19 @@ class SemanticAuthorityRegistry:
             return False
 
     @classmethod
-    def snapshot(cls) -> Dict[str, str]:
+    def snapshot(cls) -> Dict[str, Any]:
         """Returns a snapshot of the current ownership topology."""
         registry = cls()
         with cls._lock:
-            return {
+            snap = {
                 domain: getattr(auth, "__name__", str(auth)) 
                 for domain, auth in registry._owners.items()
+            }
+            return {
+                "epoch_id": registry._epoch_id,
+                "frozen": registry._frozen,
+                "generation_hash": registry._topology_generation_hash,
+                "domains": snap
             }
 
     @classmethod
@@ -84,3 +136,7 @@ class SemanticAuthorityRegistry:
         registry = cls()
         with cls._lock:
             registry._owners.clear()
+            registry._frozen = False
+            registry._topology_generation_hash = ""
+            import uuid
+            registry._epoch_id = str(uuid.uuid4())

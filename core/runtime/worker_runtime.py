@@ -49,8 +49,29 @@ class WorkerSupervisor:
         self._last_heartbeat_ack_time = time.time()
 
     def _emit_wal_event(self, event_type: str, details: dict):
-        """Simulated WAL event emission. Wired to real WAL later."""
+        """Write-Ahead Log event emission using RecoveryJournal."""
         logger.info(f"[WAL] {event_type} | {details}")
+        
+        # We synthesize an IntentExecutionState to log this lifecycle event.
+        # Worker lifecycle events don't strictly have an intent_id, so we use the worker_id.
+        try:
+            from core.execution.recovery_journal import RecoveryJournal
+            from core.execution.intent_execution_state import IntentExecutionState
+            journal = RecoveryJournal.get_instance()
+            
+            # Map EventType to closest IntentExecutionState if applicable,
+            # or use a generic state (like DISPATCHED/COMPLETED)
+            state_val = IntentExecutionState.DISPATCHED
+            if event_type == EventType.WORKER_KILLED:
+                state_val = IntentExecutionState.TERMINATED
+                
+            journal.log_transition(
+                intent_id=self.identity.worker_id,
+                state=state_val,
+                payload={"event_type": event_type, "details": details}
+            )
+        except Exception as e:
+            logger.error(f"Failed to write WAL event for {self.identity.worker_id}: {e}")
 
     def start(self):
         with self._lock:

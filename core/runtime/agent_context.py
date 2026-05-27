@@ -24,6 +24,9 @@ class AgentContext:
     # Phase 13: KernelSupervisor delegate (optional for backwards compatibility)
     kernel_supervisor: Any = None 
 
+    # Phase 15: Explicitly injected KernelExecutionFacade
+    kernel_facade: Any = None
+
     # Telemetry data that the agent might want to read, 
     # but not modify.
     telemetry_tags: Dict[str, str] = field(default_factory=dict)
@@ -33,7 +36,16 @@ class AgentContext:
         Emits an ExecutionIntent to the RuntimeKernel.
         Replaces direct subprocess execution and transaction management.
         """
-        facade = RuntimeKernel.get_instance().facade
+        if self.kernel_facade is not None:
+            facade = self.kernel_facade
+        else:
+            import warnings
+            from core.runtime.runtime_bootstrap import BootstrapPhase, RuntimeBootstrap
+            if RuntimeBootstrap.get_phase() == BootstrapPhase.STRICT:
+                raise RuntimeError("AgentContext requires explicit kernel_facade injection in STRICT mode.")
+            warnings.warn("AgentContext implicit facade lookup is deprecated.", DeprecationWarning, stacklevel=2)
+            facade = RuntimeKernel.get_instance().facade
+            
         return facade.dispatch(
             capability=capability,
             payload=payload,
