@@ -1,153 +1,153 @@
 """
-EventBus — Async publish/subscribe for agent decoupling.
-Mirrors OpenHands event-stream architecture.
-Agents communicate ONLY through events — no direct calls.
+core/orchestration/event_bus.py
+
+Phase 15/16: Runtime Event Topology Coordinator
+Transitions the architecture from "direct-call coordinated" to "event-topology coordinated".
+
+WARNING: Do NOT let this become KernelFacade v2.
+This class is exclusively a routing + synchronization authority.
+It does NOT own execution, it does NOT own lifecycles, it only routes their consequences.
 """
+
 import asyncio
-import json
 import logging
 import threading
-from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Callable, List, Optional, Dict
 
-logger = logging.getLogger("EventBus")
+from core.contracts.runtime_events import (
+    RuntimeEvent, LifecycleEvent, ExecutionEvent, 
+    VerificationEvent, SchedulerEvent, TelemetryEvent
+)
+from core.execution.execution_scheduler import ExecutionScheduler
 
-REQUIRED_EVENTS = frozenset({
-    "task_started", "task_completed", "task_failed", "task_retrying",
-    "tool_call_start", "tool_call_end", "tool_call_error",
-    "llm_call_start", "llm_call_end",
-    "agent_handoff", "agent_spawned", "agent_terminated",
-    "memory_read", "memory_write",
-    "safety_check_passed", "safety_check_blocked",
-    "human_escalation_required",
-    "session_started", "session_ended",
-})
+logger = logging.getLogger("RuntimeEventTopology")
 
-
-class EventBus:
+class RuntimeEventTopologyCoordinator:
     """
-    Thread-safe async publish/subscribe event bus.
-    Stores complete event log for session replay (replay_session feature).
+    Thread-safe synchronization and routing authority.
+    Only accepts strongly-typed RuntimeEvent subclasses.
     """
 
-    def __init__(self, memory_system=None):
-        self._subscribers: Dict[str, List[Callable]] = {}
-        self._event_log: List[Dict] = []
+    def __init__(self, scheduler: Optional[ExecutionScheduler] = None, memory_system=None):
+        self._subscribers: Dict[type, List[Callable]] = {}
+        self._event_log: List[RuntimeEvent] = []
         self._memory = memory_system
-        self._lock = threading.Lock()
+        self._scheduler = scheduler
+        
+        self._log_lock = threading.Lock()
+        self._verification_lock = threading.Lock() # Sequential verification routing guarantee
 
-    async def emit(self, event_type: str, data: Dict) -> None:
-        event = {
-            "type": event_type,
-            "data": data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        with self._lock:
+    def set_scheduler(self, scheduler: ExecutionScheduler) -> None:
+        """Inject the scheduler to allow closed-loop convergence routing."""
+        self._scheduler = scheduler
+
+    def emit_sync(self, event: RuntimeEvent) -> None:
+        """
+        Synchronous topological routing. 
+        """
+        if not isinstance(event, RuntimeEvent):
+            logger.error("[Topology] Rejected untyped event emission. Must be a RuntimeEvent.")
+            return
+
+        # 1. Topological Guarantees & Closed-Loop Routing
+        self._enforce_topology_rules(event)
+
+        # 2. Sequential Guarantee for Verification
+        if isinstance(event, VerificationEvent):
+            with self._verification_lock:
+                self._dispatch_to_subscribers(event)
+        else:
+            self._dispatch_to_subscribers(event)
+
+        # 3. Memory/Replay Persistence (Transitional, still in-memory for now)
+        with self._log_lock:
             if len(self._event_log) > 5000:
-                self._event_log.pop(0)  # audit: backpressure cap
+                self._event_log.pop(0)
             self._event_log.append(event)
 
-        if self._memory:
+        # Legacy telemetry fallback
+        if self._memory and isinstance(event, TelemetryEvent):
             try:
                 self._memory.log_system_event(
-                    event_type,
-                    details=json.dumps(data, default=str)[:2000],
-                    severity="info",
-                )
-            except Exception as exc:
-                logger.debug(f"EventBus persist: {exc}")
-
-        handlers = self._subscribers.get(event_type, [])
-        if handlers:
-            await asyncio.gather(
-                *[_safe_call(h, event) for h in handlers],
-                return_exceptions=True,
-            )
-        logger.debug(f"[EventBus] {event_type} — {len(handlers)} handler(s)")
-
-    def emit_sync(self, event_type: str, data: Dict) -> None:
-        """Sync wrapper for non-async callers."""
-        event = {
-            "type": event_type,
-            "data": data,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        with self._lock:
-            if len(self._event_log) > 5000:
-                self._event_log.pop(0)  # audit: backpressure cap
-            self._event_log.append(event)
-
-        if self._memory:
-            try:
-                self._memory.log_system_event(
-                    event_type,
-                    details=json.dumps(data, default=str)[:2000],
+                    "TELEMETRY",
+                    details=event.message,
+                    severity=event.severity
                 )
             except Exception as e:
-                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
-                pass
+                logger.debug(f"[Topology] Memory logging failed: {e}")
 
-        for handler in self._subscribers.get(event_type, []):
+    async def emit(self, event: RuntimeEvent) -> None:
+        """Async wrapper."""
+        # For now, map to sync to maintain sequential strictness in the topology
+        self.emit_sync(event)
+
+    def _enforce_topology_rules(self, event: RuntimeEvent) -> None:
+        """
+        Explicit Scheduler Feedback Loop.
+        This is where the topology reacts to its own failures.
+        """
+        if isinstance(event, LifecycleEvent) and event.is_dead:
+            if self._scheduler:
+                logger.warning(f"[Topology] HWND {event.hwnd} died. Routing ABORT to Scheduler.")
+                # We could directly call the scheduler, but for pure event architecture, 
+                # we just emit a secondary SchedulerEvent which the scheduler would be subscribed to.
+                abort_event = SchedulerEvent(
+                    parent_event_id=event.event_id,
+                    action="QUEUE_ABORT",
+                    target_queue_id=str(event.hwnd),
+                    reason="Lifecycle Invalidated (Dead Handle)"
+                )
+                self.emit_sync(abort_event)
+
+    def _dispatch_to_subscribers(self, event: RuntimeEvent) -> None:
+        event_type = type(event)
+        handlers = self._subscribers.get(event_type, [])
+        
+        for handler in handlers:
             try:
                 result = handler(event)
+                # If the handler is an async coroutine, we schedule it fire-and-forget
                 if asyncio.iscoroutine(result):
                     try:
-                        loop = asyncio.get_event_loop()
-                        if loop.is_running():
-                            asyncio.ensure_future(result)
-                        else:
-                            loop.run_until_complete(result)
+                        loop = asyncio.get_running_loop()
+                        asyncio.ensure_future(result)
                     except RuntimeError:
+                        # No running loop in this thread
                         pass
             except Exception as exc:
-                logger.warning(f"EventBus sync handler error: {exc}")
+                logger.error(f"[Topology] Handler {handler.__name__} raised exception on {event_type.__name__}: {exc}")
 
-    def subscribe(self, event_type: str, handler: Callable) -> None:
-        with self._lock:
+    def subscribe(self, event_type: type, handler: Callable) -> None:
+        if not issubclass(event_type, RuntimeEvent):
+            raise TypeError("event_type must be a subclass of RuntimeEvent")
+        with self._log_lock:
             self._subscribers.setdefault(event_type, []).append(handler)
 
-    def subscribe_many(self, events: List[str], handler: Callable) -> None:
-        for ev in events:
-            self.subscribe(ev, handler)
-
-    def get_session_log(self) -> List[Dict]:
-        with self._lock:
-            return self._event_log.copy()
-
-    def get_events_by_type(self, event_type: str) -> List[Dict]:
-        with self._lock:
-            return [e for e in self._event_log if e["type"] == event_type]
-
-    def replay_session(self, session_id: str = None) -> List[Dict]:
-        """Return full chronological event log for debugging/replay."""
-        with self._lock:
-            events = self._event_log.copy()
-        if session_id:
-            events = [e for e in events
-                      if e.get("data", {}).get("session_id") == session_id]
-        return sorted(events, key=lambda e: e["timestamp"])
+    def get_causal_lineage(self, event_id: str) -> List[RuntimeEvent]:
+        """Reconstructs the execution history for a given event ID."""
+        with self._log_lock:
+            # Naive lookup for foundational phase
+            history = []
+            current_id = event_id
+            while current_id:
+                ev = next((e for e in self._event_log if e.event_id == current_id), None)
+                if not ev:
+                    break
+                history.append(ev)
+                current_id = ev.parent_event_id
+            return history[::-1]
 
     def clear_log(self) -> None:
-        with self._lock:
+        with self._log_lock:
             self._event_log.clear()
 
+# Singleton accessor (Legacy support)
+_topology: Optional[RuntimeEventTopologyCoordinator] = None
 
-async def _safe_call(handler: Callable, event: Dict) -> None:
-    try:
-        result = handler(event)
-        if asyncio.iscoroutine(result):
-            await result
-    except Exception as exc:
-        logger.warning(f"EventBus handler raised: {exc}")
-
-
-_bus: Optional[EventBus] = None
-
-
-def get_event_bus(memory_system=None) -> EventBus:
-    global _bus
-    if _bus is None:
-        _bus = EventBus(memory_system=memory_system)
-    elif memory_system and _bus._memory is None:
-        _bus._memory = memory_system
-    return _bus
+def get_event_bus(memory_system=None) -> RuntimeEventTopologyCoordinator:
+    global _topology
+    if _topology is None:
+        _topology = RuntimeEventTopologyCoordinator(memory_system=memory_system)
+    elif memory_system and _topology._memory is None:
+        _topology._memory = memory_system
+    return _topology
