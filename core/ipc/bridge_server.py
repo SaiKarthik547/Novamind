@@ -1,13 +1,11 @@
 """
-core/bridge_server.py
-NovaMind WebSocket IPC server — Protocol 1.0.0
+core/ipc/bridge_server.py
 
-Key guarantees:
-  - Every outgoing message carries a monotonically increasing sequence_id.
-  - Incoming msg_id duplicates are silently discarded (idempotency).
-  - Incoming sequence gaps trigger bounded reconciliation, NOT immediate disconnect.
-  - Protocol/schema violations always force disconnect (1003).
-  - Optional chaos_mode for CI/testing injects: drops, duplicates, delays.
+Phase 18: Godot Synchronization Boundary (CQRS & Observability Egress)
+Enforces a strict non-authoritative UI. The Bridge is purely a transport adapter.
+Godot observations (Egress) are loss-tolerant and decoupled via RuntimeEventStream.
+Godot commands (Ingress) are fire-and-forget Intent submissions.
+Reconciliation is demoted to a non-mutating synchronization request.
 """
 
 import asyncio
@@ -24,29 +22,19 @@ import websockets
 from shared.protocol.events import (
     MessageType, EventType, PROTOCOL_VERSION, validate_message
 )
+from core.runtime.runtime_event_stream import RuntimeEventStream
+from core.orchestration.event_bus import get_event_bus
+from core.contracts.runtime_events import ExecutionEvent, ExecutionState, SchedulerEvent
 
 logger = logging.getLogger(__name__)
 
-# ── Tunables ──────────────────────────────────────────────────────────────────
-# Max out-of-order messages buffered before declaring desync.
 _OOO_QUEUE_LIMIT = 32
-# Idempotency cache: how many recent msg_ids to remember (circular).
 _IDEMPOTENCY_CACHE_SIZE = 4096
-
 
 class BridgeServer:
     """
-    Single-client WebSocket IPC server between the Python Ecosystem and Godot.
-
-    Architecture:
-        Transport ordering  → sequence_id (monotonic int per connection)
-        Semantic causality  → causal_parent_id (set by callers)
-        Idempotency         → msg_id LRU cache (discard duplicates silently)
-        Chaos mode          → probabilistic packet manipulation for CI
-
-    Modes:
-        validation_mode=True  → strict fail-fast on sequence gap (CI)
-        validation_mode=False → bounded reconciliation queue (production)
+    CQRS WebSocket IPC server between the Python Ecosystem and Godot.
+    Strictly isolated from orchestration authority.
     """
 
     def __init__(
@@ -55,6 +43,7 @@ class BridgeServer:
         port: int = 8765,
         chaos_mode: bool = False,
         validation_mode: bool = False,
+        event_stream: Optional[RuntimeEventStream] = None
     ):
         self.host = host
         self.port = port
@@ -65,140 +54,100 @@ class BridgeServer:
         self.server: Optional[websockets.serve] = None
         self.is_running = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        
         self._heartbeat_task: Optional[asyncio.Task] = None
+        self._egress_task: Optional[asyncio.Task] = None
 
-        # Outgoing sequence (monotonic, per server lifetime)
         self._out_seq: int = 0
-
-        # Incoming sequence tracking (reset per connection)
         self._in_seq_expected: int = 0
-        self._ooo_queue: list = []      # buffered out-of-order messages
-        self._degraded: bool = False    # True while waiting for resync
-
-        # Idempotency cache (circular deque of seen msg_ids)
+        self._ooo_queue: list = []
+        self._degraded: bool = False
         self._seen_msg_ids: deque = deque(maxlen=_IDEMPOTENCY_CACHE_SIZE)
 
-        # Handlers and callbacks
+        # The egress pipeline from the Orchestrator
+        self._event_stream = event_stream or RuntimeEventStream()
+        self._topology = get_event_bus()
+
         self.message_handlers: Dict[str, Callable[[Dict[str, Any]], Awaitable[None]]] = {}
-        self.heartbeat_callback: Optional[Callable[[], dict]] = None
-
-        # Violation callback — injected by RuntimeAuditor
-        self.on_invariant_violation: Optional[Callable[[dict], None]] = None
-
-    # ── Public API ────────────────────────────────────────────────────────────
 
     def register_handler(self, msg_type: str, handler: Callable):
         self.message_handlers[msg_type] = handler
 
-    # ── Connection lifecycle ──────────────────────────────────────────────────
-
     async def _handle_client(self, websocket: websockets.WebSocketServerProtocol):
         if self.connected_client is not None:
-            logger.warning("Rejecting second client — only one allowed.")
+            logger.warning("[Bridge] Rejecting second client — only one allowed.")
             await websocket.close(1008, "Only one client allowed")
             return
 
         self.connected_client = websocket
         self._reset_incoming_sequence()
-        logger.info(f"Godot Client connected from {websocket.remote_address}")
+        logger.info(f"[Bridge] Godot Client connected from {websocket.remote_address}")
 
         try:
             async for raw in websocket:
                 await self._receive(raw)
         except websockets.exceptions.ConnectionClosed:
-            logger.info("Godot Client disconnected cleanly.")
+            logger.info("[Bridge] Godot Client disconnected cleanly.")
         except Exception as e:
-            logger.error(f"Godot connection error: {e}")
+            logger.error(f"[Bridge] Godot connection error: {e}")
         finally:
             self.connected_client = None
             self._reset_incoming_sequence()
-            logger.info("Godot Client connection cleaned up.")
+            logger.info("[Bridge] Godot Client connection cleaned up.")
 
     def _reset_incoming_sequence(self):
         self._in_seq_expected = 0
         self._ooo_queue.clear()
         self._degraded = False
 
-    # ── Incoming message pipeline ─────────────────────────────────────────────
-
     async def _receive(self, raw: str):
-        # 1. Parse JSON
         try:
             msg = json.loads(raw)
         except json.JSONDecodeError:
-            logger.error(f"[Bridge] Non-JSON payload received, ignoring.")
             return
 
-        # 2. Schema validation — always enforced
         if not validate_message(msg):
-            logger.error("[Bridge] Schema violation → force disconnect (1003).")
             if self.connected_client:
                 await self.connected_client.close(1003, "Protocol Validation Failed")
             self.connected_client = None
             return
 
-        # 3. Idempotency — discard duplicates silently
         mid = msg["msg_id"]
         if mid in self._seen_msg_ids:
-            logger.debug(f"[Bridge] Duplicate msg_id {mid[:8]}… discarded.")
             return
         self._seen_msg_ids.append(mid)
 
-        # 4. Transport sequence ordering
         seq = msg["sequence_id"]
         if not await self._handle_sequence(msg, seq):
-            return  # Out of order; buffered or rejected
+            return
 
-        # 5. Dispatch
         await self._dispatch(msg)
 
     async def _handle_sequence(self, msg: dict, seq: int) -> bool:
-        """
-        Returns True if the message should be dispatched now.
-        Returns False if it was buffered or dropped.
-
-        Validation mode: strict fail-fast on gap.
-        Production mode: bounded reconciliation queue.
-        """
+        """Transport integrity bounds. Does not affect orchestration topology."""
         if seq == self._in_seq_expected:
             self._in_seq_expected += 1
-            # Drain any buffered OOO messages that are now in-order
             await self._drain_ooo_queue()
             return True
 
         if seq < self._in_seq_expected:
-            # Sequence regressed — transport duplicate or replay artifact
-            logger.warning(
-                f"[Bridge] Sequence regression: expected {self._in_seq_expected}, got {seq}. Discarding."
-            )
             return False
 
-        # seq > expected: gap detected
-        gap = seq - self._in_seq_expected
-        logger.warning(f"[Bridge] Sequence gap of {gap} detected (expected {self._in_seq_expected}, got {seq}).")
-
         if self.validation_mode:
-            logger.error("[Bridge] Validation mode: gap → force disconnect (1003).")
             if self.connected_client:
-                await self.connected_client.close(1003, "Sequence Gap — Validation Mode")
+                await self.connected_client.close(1003, "Sequence Gap")
             self.connected_client = None
             return False
 
-        # Production mode: buffer and enter degraded
         if len(self._ooo_queue) >= _OOO_QUEUE_LIMIT:
-            logger.error(
-                f"[Bridge] OOO queue full ({_OOO_QUEUE_LIMIT} msgs). "
-                "Declaring desync — closing connection."
-            )
             if self.connected_client:
-                await self.connected_client.close(1011, "OOO Queue Overflow — Desync")
+                await self.connected_client.close(1011, "OOO Queue Overflow")
             self.connected_client = None
             return False
 
         self._ooo_queue.append(msg)
         self._ooo_queue.sort(key=lambda m: m["sequence_id"])
         self._degraded = True
-        logger.info(f"[Bridge] Buffered OOO message seq={seq}. Queue depth: {len(self._ooo_queue)}.")
         return False
 
     async def _drain_ooo_queue(self):
@@ -214,71 +163,71 @@ class BridgeServer:
             self._degraded = False
 
     async def _dispatch(self, msg: dict):
+        """
+        CQRS Ingress: Fire-and-forget.
+        We do NOT wait for orchestration execution.
+        Godot commands immediately become PENDING ExecutionEvents.
+        """
         msg_type = msg["message_type"]
-        event_type = msg["event_type"]
-
+        
         if msg_type == MessageType.HEARTBEAT:
-            # Echo back with authoritative state
-            auth = {}
-            if self.heartbeat_callback:
-                try:
-                    auth = self.heartbeat_callback()
-                except Exception as e:
-                    logger.error(f"[Bridge] Heartbeat callback error: {e}")
-            await self.send_message(
-                MessageType.HEARTBEAT,
-                EventType.SYSTEM_HEARTBEAT,
-                payload={"status": "pong", "authoritative_state": auth},
-                causal_parent_id=msg["msg_id"],
-            )
+            # Simple transport pong
+            await self.send_message(MessageType.HEARTBEAT, EventType.SYSTEM_HEARTBEAT, payload={"status": "pong"})
             return
 
-        logger.info(f"[Bridge] ← {msg_type}:{event_type} seq={msg['sequence_id']}")
         handler = self.message_handlers.get(msg_type)
         if handler:
+            # We schedule it as a fire-and-forget task so we don't block the transport read loop
             asyncio.create_task(handler(msg))
         else:
-            logger.warning(f"[Bridge] No handler for message_type '{msg_type}'")
+            # Default CQRS submission if no specific transport handler exists
+            intent_event = ExecutionEvent(
+                state=ExecutionState.PENDING,
+                payload=msg.get("payload", {})
+            )
+            self._topology.emit_sync(intent_event)
 
-    async def trigger_reconciliation(self, authoritative_state: dict):
+    def trigger_reconciliation(self, authoritative_state: dict):
         """
-        Forces Godot to accept Python's truth (Python wins mismatch).
+        DEMOTED: No longer mutates state or forces Godot synchronization.
+        Simply submits a request to the Topology Coordinator.
         """
-        logger.warning("[Bridge] Triggering formal RECONCILIATION_REQUEST to client.")
-        await self.send_message(
-            msg_type="SYSTEM",
-            event_type="RECONCILIATION_REQUEST",
-            payload={"authoritative_state": authoritative_state}
+        logger.info("[Bridge] Demoted trigger_reconciliation called. Submitting IntentRequest.")
+        sync_event = SchedulerEvent(
+            action="UI_RECONCILIATION_REQUESTED",
+            target_queue_id="GLOBAL",
+            reason="UI requested state resync."
         )
-        self._degraded = True
+        self._topology.emit_sync(sync_event)
 
-    # ── Outgoing ──────────────────────────────────────────────────────────────
+    # ── Egress Pipeline ───────────────────────────────────────────────────────
 
-    async def send_message(
-        self,
-        msg_type: str,
-        event_type: str,
-        payload: dict = None,
-        correlation_id: str = "",
-        causal_parent_id: str = None,
-    ) -> bool:
+    async def _egress_loop(self):
+        """
+        Consumes the isolated RuntimeEventStream and blasts it to Godot.
+        Because RuntimeEventStream is lossy (drops on full queue), 
+        Godot lag NEVER backpressures the Execution Topology.
+        """
+        async for event_dict in self._event_stream.subscribe():
+            if not self.connected_client:
+                continue
+            
+            # Translate topology event into transport envelope
+            event_type = event_dict.get("_event_type", "UNKNOWN_EVENT")
+            await self.send_message(
+                msg_type="STATE_UPDATE",
+                event_type=event_type,
+                payload=event_dict
+            )
+
+    async def send_message(self, msg_type: str, event_type: str, payload: dict = None) -> bool:
+        """Internal transport emission. Not called directly by Orchestrator anymore."""
         if not self.connected_client:
             return False
 
-        # Chaos: probabilistic drop (Tier 1 only — no payload mutation)
-        if self.chaos_mode:
-            if random.random() < 0.05:      # 5% drop
-                logger.debug("[Chaos] Dropped outgoing packet.")
-                return True
-            if random.random() < 0.03:      # 3% duplicate
-                logger.debug("[Chaos] Duplicating outgoing packet.")
-                await self._emit(msg_type, event_type, payload, correlation_id, causal_parent_id)
-            if random.random() < 0.02:      # 2% delay
-                await asyncio.sleep(random.uniform(0.05, 0.3))
+        if self.chaos_mode and random.random() < 0.05:
+            return True
 
-        return await self._emit(msg_type, event_type, payload, correlation_id, causal_parent_id)
-
-    async def _emit(self, msg_type, event_type, payload, correlation_id, causal_parent_id) -> bool:
         mid = str(uuid.uuid4())
         seq = self._out_seq
         self._out_seq += 1
@@ -288,82 +237,39 @@ class BridgeServer:
             "message_type": msg_type,
             "event_type": event_type,
             "sequence_id": seq,
-            "causal_parent_id": causal_parent_id,
             "payload": payload or {},
-            "timestamp": time.time(),  # L6-B: real Unix timestamp, not monotonic loop counter
+            "timestamp": time.time(),
             "msg_id": mid,
-            "correlation_id": correlation_id or str(uuid.uuid4()),
+            "correlation_id": str(uuid.uuid4()),
         }
-
-        if not validate_message(msg):
-            logger.error(f"[Bridge] Outgoing message failed validation (seq={seq}). Dropped.")
-            self._out_seq -= 1  # Rollback seq so there's no gap
-            return False
 
         try:
             await self.connected_client.send(json.dumps(msg))
-            if msg_type != MessageType.HEARTBEAT:
-                logger.debug(f"[Bridge] → {msg_type}:{event_type} seq={seq}")
             return True
         except Exception as e:
-            logger.error(f"[Bridge] Send failed (seq={seq}): {e}")
+            logger.debug(f"[Bridge] Egress failed (seq={seq}): {e}")
             return False
-
-    def send_message_threadsafe(
-        self,
-        msg_type: str,
-        event_type: str,
-        payload: dict = None,
-        correlation_id: str = "",
-        causal_parent_id: str = None,
-    ) -> bool:
-        """
-        Marshal a send from any background thread into the server's asyncio loop.
-        """
-        if not self.is_running or not self._loop or self._loop.is_closed():
-            logger.warning(f"[Bridge] Threadsafe drop — server not ready: {msg_type}:{event_type}")
-            return False
-        try:
-            asyncio.run_coroutine_threadsafe(
-                self.send_message(msg_type, event_type, payload, correlation_id, causal_parent_id),
-                self._loop,
-            )
-            return True
-        except Exception as e:
-            logger.error(f"[Bridge] Threadsafe scheduling failed: {e}")
-            return False
-
-    # ── Heartbeat ─────────────────────────────────────────────────────────────
 
     async def _heartbeat_loop(self):
         while self.is_running:
             await asyncio.sleep(5)
             if self.connected_client:
-                payload = {"status": "ping", "degraded": self._degraded}
-                if self.heartbeat_callback:
-                    try:
-                        payload["authoritative_state"] = self.heartbeat_callback()
-                    except Exception as e:
-                        logger.error(f"[Bridge] Heartbeat callback failed: {e}")
-                await self.send_message(
-                    MessageType.HEARTBEAT, EventType.SYSTEM_HEARTBEAT, payload=payload
-                )
-
-    # ── Lifecycle ─────────────────────────────────────────────────────────────
+                await self.send_message(MessageType.HEARTBEAT, EventType.SYSTEM_HEARTBEAT, payload={"degraded": self._degraded})
 
     async def start(self):
         self.is_running = True
         self._loop = asyncio.get_running_loop()
         self.server = await websockets.serve(self._handle_client, self.host, self.port)
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-        mode = "CHAOS" if self.chaos_mode else ("VALIDATION" if self.validation_mode else "PRODUCTION")
-        logger.info(f"[Bridge] Listening on ws://{self.host}:{self.port} [{mode} mode]")
+        self._egress_task = asyncio.create_task(self._egress_loop())
+        logger.info(f"[Bridge] Listening on ws://{self.host}:{self.port}")
 
     async def stop(self):
         self.is_running = False
         if self._heartbeat_task:
             self._heartbeat_task.cancel()
+        if self._egress_task:
+            self._egress_task.cancel()
         if self.server:
             self.server.close()
             await self.server.wait_closed()
-        logger.info("[Bridge] Server stopped.")
