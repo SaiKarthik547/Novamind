@@ -222,68 +222,45 @@ class SystemAgent(BaseAgent):
                         cwd: str = None, env: Dict = None,
                         timeout: int = None, capture_output: bool = True,
                         stdin_input: str = None, context: Any = None) -> Dict:
-        """Execute a system command with full security checking."""
-        logger.warning("DEPRECATION WARNING: SystemAgent.execute_command is deprecated in Phase 13. Emit ExecutionIntent via AgentContext.", stack_info=True)
+        """
+        Phase 19: Canonical CQRS Intent-Yield Boundary.
+        Agent emits a semantic intent and exits. It does NOT directly execute OS calls.
+        It does NOT block or await execution completion.
+        """
+        from core.contracts.runtime_events import ExecutionEvent, ExecutionState
+        from core.orchestration.event_bus import get_event_bus
+        import uuid
+
+        # 1. Security check still applies at semantic level
         allowed, reason = self._security_check(command)
         if not allowed:
-            return {"success": False, "error": f"Security blocked: {reason}"}
+            return {"status": "BLOCKED", "error": f"Security blocked: {reason}"}
 
-        timeout  = timeout or self.MAX_EXECUTION_TIME
-        run_env  = os.environ.copy()
-        if env:
-            run_env.update(env)
+        # 2. CQRS Intent Emission
+        intent_id = str(uuid.uuid4())
+        intent_event = ExecutionEvent(
+            intent_id=intent_id,
+            state=ExecutionState.PENDING,
+            payload={
+                "action": "system_command",
+                "command": command,
+                "shell": shell,
+                "cwd": cwd
+            }
+        )
 
-        start = time.monotonic()
-        try:
-            if context and hasattr(context, 'sandbox'):
-                # Phase 8 Execution Kernel isolation
-                proc = context.sandbox.run_subprocess(
-                    context.lease.lease_id,
-                    command, shell=shell, cwd=cwd, env=run_env,
-                    stdout=subprocess.PIPE if capture_output else None,
-                    stderr=subprocess.PIPE if capture_output else None,
-                    stdin=subprocess.PIPE if stdin_input else None,
-                    text=True, encoding="utf-8", errors="replace",
-                )
-            else:
-                # Legacy unisolated execution
-                proc = self._dispatch_cmd(
-                    command, shell=shell, cwd=cwd, env=run_env,
-                    stdout=subprocess.PIPE if capture_output else None,
-                    stderr=subprocess.PIPE if capture_output else None,
-                    stdin=subprocess.PIPE if stdin_input else None,
-                    text=True, encoding="utf-8", errors="replace",
-                )
-            
-            self.running_processes[proc.pid] = proc
+        # 3. Inject to Topology Coordinator (ExecutionScheduler takes over from here)
+        bus = self.event_bus if self.event_bus else get_event_bus()
+        bus.emit_sync(intent_event)
 
-            try:
-                stdout, stderr = proc.communicate(
-                    input=stdin_input, timeout=timeout
-                )
-                elapsed = time.monotonic() - start
-                self._log_exec(command, proc.returncode == 0, elapsed)
-                return {
-                    "success":        proc.returncode == 0,
-                    "returncode":     proc.returncode,
-                    "stdout":         (stdout or "")[:50000],
-                    "stderr":         (stderr or "")[:10000],
-                    "execution_time": round(elapsed, 2),
-                    "pid":            proc.pid,
-                }
-            except subprocess.TimeoutExpired:
-                proc.kill(); proc.communicate()
-                return {
-                    "success": False,
-                    "error":   f"Command timed out after {timeout}s",
-                    "stdout": "", "stderr": "TIMEOUT",
-                }
-            finally:
-                self.running_processes.pop(proc.pid, None)
-
-        except Exception as e:
-            import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
-            return {"success": False, "error": str(e)}
+        # 4. Immediate Non-Blocking Yield
+        # The agent will re-enter later via observational feedback loop when the 
+        # topology reaches VERIFIED, CONVERGED, or INVALIDATED.
+        return {
+            "status": "PENDING",
+            "intent_id": intent_id,
+            "message": "Command submitted to ExecutionScheduler. Yielding semantic loop."
+        }
 
     def execute_script(self, code: str, language: str = "python",
                        timeout: int = 60) -> Dict:
