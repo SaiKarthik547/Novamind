@@ -7,6 +7,7 @@ network adapters, clipboard, power management, notifications.
 from __future__ import annotations
 
 import ctypes
+import importlib
 import json
 import logging
 import os
@@ -14,8 +15,8 @@ import platform
 import re
 import shutil    # L3-2: Real import — _ModuleShim removed
 import signal
-import socket    # L3-2: Real import — _ModuleShim removed
-import subprocess  # L3-2: SystemAgent is a legitimate execution adapter
+import socket
+import subprocess
 import sys
 import tempfile
 import time
@@ -211,6 +212,25 @@ class SystemAgent(BaseAgent):
             "run_command":          self.execute_command,  # Alias for task_parser compatibility
         }
 
+        # Phase C: Demote Legacy Execution Surface
+        legacy_exceptions = {
+            "execute_command", "execute_script", "execute_powershell", 
+            "execute_batch", "run_command", "get_execution_log"
+        }
+        
+        def make_legacy_wrapper(func):
+            def wrapper(*args, **kwargs):
+                logger.warning(
+                    f"LEGACY_EXECUTION_SURFACE: {func.__name__} violates CQRS authority boundaries "
+                    "and will be migrated to system_lane.py in Phase D."
+                )
+                return func(*args, **kwargs)
+            return wrapper
+            
+        for key, func in self.handlers.items():
+            if key not in legacy_exceptions:
+                self.handlers[key] = make_legacy_wrapper(func)
+
     def _emit_suppressed(self, action: str, exc: Exception) -> None:
         logger.warning(f"Suppressed error during {action}: {exc}", exc_info=True)
 
@@ -264,149 +284,50 @@ class SystemAgent(BaseAgent):
 
     def execute_script(self, code: str, language: str = "python",
                        timeout: int = 60) -> Dict:
-        """Execute a code snippet in the appropriate interpreter."""
-        logger.warning("DEPRECATION WARNING: SystemAgent.execute_script is deprecated in Phase 13. Emit ExecutionIntent via AgentContext.", stack_info=True)
-        # O(1) dict dispatch — zero elif routing
-        _EXEC_DISPATCH = {
-            "python":     self._exec_python,
-            "bash":       self._exec_shell,
-            "sh":         self._exec_shell,
-            "cmd":        self.execute_batch,
-            "batch":      self.execute_batch,
-            "powershell": self.execute_powershell,
-            "ps1":        self.execute_powershell,
-            "javascript": self._exec_js,
+        """
+        Phase 19: Canonical CQRS Intent-Yield Boundary.
+        Emits a semantic intent for script execution and exits without blocking.
+        """
+        from core.contracts.runtime_events import ExecutionEvent, ExecutionState
+        from core.orchestration.event_bus import get_event_bus
+        import uuid
+
+        intent_id = str(uuid.uuid4())
+        intent_event = ExecutionEvent(
+            intent_id=intent_id,
+            state=ExecutionState.PENDING,
+            payload={
+                "action": "execute_script",
+                "code": code,
+                "language": language,
+                "timeout": timeout
+            }
+        )
+        
+        bus = self.event_bus if self.event_bus else get_event_bus()
+        bus.emit_sync(intent_event)
+        
+        return {
+            "status": "PENDING",
+            "intent_id": intent_id,
+            "message": f"Script ({language}) submitted to ExecutionScheduler. Yielding semantic loop."
         }
-        handler = _EXEC_DISPATCH.get(language)
-        return (handler(code, timeout) if handler
-                else {"success": False, "error": f"Unsupported language: {language}"})
 
     def _exec_python(self, code: str, timeout: int) -> Dict:
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".py",
-                                          delete=False, encoding="utf-8") as f:
-            f.write(code); tmp = f.name
-        try:
-            proc = self._dispatch_cmd(
-                [sys.executable, tmp],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding="utf-8", errors="replace",
-            )
-            try:
-                out, err = proc.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill(); proc.communicate()
-                return {"success": False, "error": f"Script timed out after {timeout}s"}
-            return {
-                "success":    proc.returncode == 0,
-                "stdout":     out[:50000],
-                "stderr":     err[:10000],
-                "returncode": proc.returncode,
-            }
-        finally:
-            try: os.unlink(tmp)
-            except Exception as e:
-                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
-                self._emit_suppressed("exec_python_cleanup", e)
+        return self.execute_script(code, "python", timeout)
 
     def _exec_shell(self, code: str, timeout: int) -> Dict:
-        sh = shutil.which("bash") or shutil.which("sh") or "sh"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".sh",
-                                          delete=False, encoding="utf-8") as f:
-            f.write(code); tmp = f.name
-        try:
-            proc = self._dispatch_cmd([sh, tmp], stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, text=True)
-            try:
-                out, err = proc.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill(); proc.communicate()
-                return {"success": False, "error": "Shell script timed out"}
-            return {"success": proc.returncode == 0, "stdout": out, "stderr": err}
-        finally:
-            try: os.unlink(tmp)
-            except Exception as e:
-                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
-                self._emit_suppressed("exec_shell_cleanup", e)
+        return self.execute_script(code, "bash", timeout)
 
     def _exec_js(self, code: str, timeout: int) -> Dict:
-        node = shutil.which("node") or shutil.which("nodejs")
-        if not node:
-            return {"success": False, "error": "Node.js not found"}
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".js",
-                                          delete=False, encoding="utf-8") as f:
-            f.write(code); tmp = f.name
-        try:
-            proc = self._dispatch_cmd([node, tmp], stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, text=True)
-            try:
-                out, err = proc.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill(); proc.communicate()
-                return {"success": False, "error": "JS timed out"}
-            return {"success": proc.returncode == 0, "stdout": out, "stderr": err}
-        finally:
-            try: os.unlink(tmp)
-            except Exception as e:
-                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
-                self._emit_suppressed("exec_js_cleanup", e)
+        return self.execute_script(code, "javascript", timeout)
 
     def execute_powershell(self, script: str, timeout: int = 120,
                             execution_policy: str = "Bypass") -> Dict:
-        """Execute a PowerShell script (Windows and pwsh on Linux/Mac)."""
-        logger.warning("DEPRECATION WARNING: SystemAgent.execute_powershell is deprecated in Phase 13. Emit ExecutionIntent via AgentContext.", stack_info=True)
-        ps = shutil.which("pwsh") or shutil.which("powershell")
-        if not ps:
-            return {"success": False, "error": "PowerShell not found"}
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".ps1",
-                                          delete=False, encoding="utf-8") as f:
-            f.write(script); tmp = f.name
-        try:
-            proc = self._dispatch_cmd(
-                [ps, "-ExecutionPolicy", execution_policy,
-                 "-NonInteractive", "-File", tmp],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding="utf-8", errors="replace",
-            )
-            try:
-                out, err = proc.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill(); proc.communicate()
-                return {"success": False, "error": "PowerShell timed out"}
-            return {
-                "success": proc.returncode == 0,
-                "stdout":  out[:50000],
-                "stderr":  err[:10000],
-                "returncode": proc.returncode,
-            }
-        finally:
-            try: os.unlink(tmp)
-            except Exception as e:
-                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
-                self._emit_suppressed("exec_powershell_cleanup", e)
+        return self.execute_script(script, "powershell", timeout)
 
     def execute_batch(self, script: str, timeout: int = 60) -> Dict:
-        """Execute a Windows batch (.bat) script."""
-        logger.warning("DEPRECATION WARNING: SystemAgent.execute_batch is deprecated in Phase 13. Emit ExecutionIntent via AgentContext.", stack_info=True)
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".bat",
-                                          delete=False, encoding="utf-8") as f:
-            f.write(script); tmp = f.name
-        try:
-            proc = self._dispatch_cmd(
-                ["cmd.exe", "/C", tmp] if IS_WINDOWS else ["sh", tmp],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, encoding="utf-8", errors="replace",
-            )
-            try:
-                out, err = proc.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                proc.kill(); proc.communicate()
-                return {"success": False, "error": "Batch script timed out"}
-            return {"success": proc.returncode == 0, "stdout": out, "stderr": err}
-        finally:
-            try: os.unlink(tmp)
-            except Exception as e:
-                import logging; logging.getLogger(__name__).debug(f"Exception caught: {e}")
-                self._emit_suppressed("exec_batch_cleanup", e)
+        return self.execute_script(script, "batch", timeout)
 
     # -------------------------------------------------------------------------
     #  System Info
@@ -2199,6 +2120,3 @@ class SystemAgent(BaseAgent):
 
     def get_execution_log(self) -> List[Dict]:
         return self.execution_log[-50:]
-
-
-import importlib
