@@ -1,6 +1,8 @@
 import os
 import shutil
 import logging
+import hashlib
+import uuid
 from typing import Dict, Any, Optional
 
 from core.adapters.adapter_contract import ApplicationAdapter, AdapterState, VerificationMode
@@ -26,6 +28,9 @@ class FilesystemAdapter(ApplicationAdapter):
     def __init__(self):
         self._state = AdapterState.CREATED
         self._determinism = DeterminismLevel.STRICT
+        # Observation target for local verify()/reconcile(): the last write
+        # this adapter instance performed (path + digest of final on-disk bytes).
+        self._last_write: Optional[Dict[str, Any]] = None
 
     def get_state(self) -> AdapterState:
         return self._state
@@ -80,10 +85,60 @@ class FilesystemAdapter(ApplicationAdapter):
         content = payload["content"]
         encoding = payload.get("encoding", "utf-8")
         mode = payload.get("mode", "w")
-        
-        with open(path, mode, encoding=encoding) as f:
-            f.write(content)
-        return {"success": True}
+
+        # Any new write attempt invalidates the previous observation target.
+        self._last_write = None
+
+        target = os.path.abspath(path)
+        parent = os.path.dirname(target)
+        if parent and not os.path.isdir(parent):
+            return {"success": False, "error": f"Parent directory does not exist: {parent}"}
+
+        if mode in ("w", "wt", "w+"):
+            # Atomic replace: write a temp file in the SAME directory, flush+
+            # fsync its contents, then os.replace() it over the target (atomic
+            # on Windows via MoveFileEx). A crash leaves either the old file or
+            # the new file — never a torn/partial one.
+            tmp_path = f"{target}.{uuid.uuid4().hex}.tmp"
+            try:
+                with open(tmp_path, "w", encoding=encoding) as f:
+                    f.write(content)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp_path, target)
+            except BaseException:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
+                raise
+        elif mode in ("a", "at", "a+", "at+"):
+            # Append cannot be expressed as an atomic replace; durability is
+            # still enforced with flush + fsync before returning.
+            with open(target, mode, encoding=encoding) as f:
+                f.write(content)
+                f.flush()
+                os.fsync(f.fileno())
+        else:
+            raise ValueError(
+                f"Unsupported write mode {mode!r}. The canonical filesystem "
+                f"lane only permits atomic replace ('w') or append ('a')."
+            )
+
+        # Observe the FINAL on-disk bytes (not the intended bytes) so the
+        # digest reflects what actually landed on storage.
+        with open(target, "rb") as f:
+            final_bytes = f.read()
+        digest = hashlib.sha256(final_bytes).hexdigest()
+        self._last_write = {"path": target, "sha256": digest, "bytes": len(final_bytes)}
+        return {
+            "success": True,
+            "path": target,
+            "bytes_written": len(final_bytes),
+            "sha256": digest,
+            "mode": mode,
+        }
         
     def _do_delete(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         path = payload["path"]
@@ -109,15 +164,52 @@ class FilesystemAdapter(ApplicationAdapter):
         os.makedirs(path, exist_ok=exist_ok)
         return {"success": True}
 
+    def _last_write_intact(self) -> bool:
+        """True only if the last observed write is still present with identical bytes."""
+        if not self._last_write:
+            return False
+        try:
+            with open(self._last_write["path"], "rb") as f:
+                observed = hashlib.sha256(f.read()).hexdigest()
+            return observed == self._last_write["sha256"]
+        except OSError:
+            return False
+
     def verify(self, mode: VerificationMode) -> bool:
+        """
+        Adapter-local confirmation that the last write this adapter instance
+        performed is still on disk with identical bytes (sha256 match).
+
+        This is NOT the kernel's authoritative verification — the execution
+        dispatcher performs independent post-dispatch observation before an
+        intent may reach COMPLETED. Returns False when this adapter instance
+        has no observed write to verify.
+        """
         self._state = AdapterState.VERIFYING
+        if not self._last_write:
+            logger.warning("FilesystemAdapter.verify: no observed write to verify.")
+            self._state = AdapterState.ATTACHED
+            return False
+        ok = self._last_write_intact()
+        if not ok:
+            logger.error(
+                f"FilesystemAdapter.verify: on-disk state diverged for "
+                f"{self._last_write['path']}"
+            )
         self._state = AdapterState.ATTACHED
-        return True
+        return ok
 
     def reconcile(self) -> bool:
+        """
+        Re-check whether the last observed write is intact. The adapter does
+        NOT retain the written content, so it cannot re-apply a lost write;
+        it reports honestly: True when state already matches, False when the
+        divergence cannot be repaired locally (kernel-side recovery owns that).
+        """
         self._state = AdapterState.RECONCILING
+        ok = self._last_write_intact()
         self._state = AdapterState.ATTACHED
-        return True
+        return ok
 
     def teardown(self) -> None:
         self._state = AdapterState.TERMINATED

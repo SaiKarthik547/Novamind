@@ -38,6 +38,7 @@ venv.bak/
 test_env/
 
 # ── RUNTIME & CONFIGURATION ──────────────────────────────────────────────────
+runtime/logs/
 .env                   # API keys and sensitive config
 .env.local
 .env.*.local

@@ -1,5 +1,4 @@
-"""
-core/replay/event_recorder.py
+"""core/replay/event_recorder.py
 
 Phase 17: Replay Convergence (RecoveryJournal)
 Transitions from "telemetry append log" to "causal synchronization preservation layer".
@@ -15,7 +14,7 @@ import os
 from dataclasses import asdict
 import threading
 
-from core.foundation.canonical import state_hash
+from core.foundation.canonical import state_hash, canonicalize
 from core.contracts.runtime_events import RuntimeEvent
 
 logger = logging.getLogger(__name__)
@@ -33,20 +32,20 @@ class RecoveryJournal:
         base_dir = Path(log_dir) if log_dir else Path("runtime/logs")
         self.session_dir = base_dir / f"session_{self.session_id}"
         self.session_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.manifest_file = self.session_dir / "manifest.json"
-        
+
         self._segment_index = 0
         self._current_file = None
         self._current_file_path = None
         self._current_segment_bytes = 0
         self._current_segment_events = 0
-        
+
         self._last_hash = None
         self._checkpoint_segments = []
-        
+
         self._write_lock = threading.Lock()
-        
+
         self._init_manifest()
         self._open_segment(0)
         logger.info(f"[RecoveryJournal] Initialized causal durability at {self.session_dir}")
@@ -81,7 +80,7 @@ class RecoveryJournal:
     def _open_segment(self, index: int):
         if self._current_file:
             self._current_file.close()
-            
+
         self._segment_index = index
         self._current_segment_bytes = 0
         self._current_segment_events = 0
@@ -100,9 +99,14 @@ class RecoveryJournal:
         Appends the event, chains the hash, and fsyncs immediately.
         Must be called BEFORE topological propagation.
         """
-        payload = asdict(event)
+        # Canonicalize first (enums -> declared values) so the hashed bytes
+        # and the persisted line describe the SAME logical payload. Enums in
+        # plain json.dumps would otherwise fall to default=str (e.g.
+        # "ExecutionState.PENDING") while the hash covered "PENDING",
+        # breaking any later chain recomputation from the stored line.
+        payload = canonicalize(asdict(event))
         payload["_event_type"] = event.__class__.__name__
-        
+
         with self._write_lock:
             try:
                 # 1. Cryptographic Chaining of Causal Topology
@@ -150,3 +154,10 @@ class RecoveryJournal:
             os.fsync(self._current_file.fileno())
             self._current_file.close()
             self._current_file = None
+
+
+# Transitional compatibility alias.
+# Some modules currently import EventRecorder from this package. This alias exists
+# only to avoid a mass import rewrite before the canonical journal authority is chosen.
+# It must NOT be treated as the canonical event recorder for the convergence program.
+EventRecorder = RecoveryJournal

@@ -71,7 +71,17 @@ class ReplayCoordinator:
                 logger.info(f"Skipping intent {intent_id} (Policy: {cap.replay_policy.value})")
                 continue
                 
-            # If the intent was DISPATCHED but never COMPLETED, it needs salvage/replay
-            if state in (IntentExecutionState.DISPATCHED.value, IntentExecutionState.RECEIVED.value):
+            # If the intent was DISPATCHED but never reached a terminal state,
+            # it may need salvage/replay. Received is not a canonical state;
+            # only use canonical IntentExecutionState values here.
+            terminal = {
+                IntentExecutionState.COMPLETED.value,
+                IntentExecutionState.FAILED.value,
+                IntentExecutionState.ABORTED.value,
+                IntentExecutionState.REJECTED.value,
+                IntentExecutionState.COMPENSATED.value,
+                IntentExecutionState.RECONCILED.value,
+            }
+            if state in (IntentExecutionState.DISPATCHED.value,) and state not in terminal:
                 logger.info(f"Sequencing intent {intent_id} for deterministic replay.")
                 # Sequence logic goes here

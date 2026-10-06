@@ -96,14 +96,15 @@ class KernelExecutionFacade:
         intent_meta: Dict[str, Any],
         timeout: float,
     ) -> IntentResult:
-        from core.execution.execution_intent import ExecutionIntent, VerificationMode, RollbackMode
+        from core.execution.execution_intent import ExecutionIntent, RollbackMode
+        from core.execution.verification_taxonomy import VerificationMode
         adapter_name, operation = capability.split(".", 1)
 
         intent = ExecutionIntent(
             adapter=adapter_name,
             operation=operation,
             idempotent=intent_meta.get("idempotent", False),
-            verification_mode=VerificationMode.STRUCTURAL,
+            verification_mode=VerificationMode.STRICT_STATE_VERIFICATION,
             rollback_strategy=RollbackMode.NO_ROLLBACK,
             capability_scope={"capability": capability},
             payload=payload,

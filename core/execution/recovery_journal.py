@@ -31,7 +31,10 @@ class RecoveryJournal:
 
     def __init__(self, filepath: str):
         self.filepath = filepath
-        self._fd_lock = threading.Lock()
+        # RLock (not Lock): log_transition() holds _fd_lock while calling
+        # _open() after a close(), and _open() acquires _fd_lock again on the
+        # same thread — a plain Lock deadlocks there, wedging the WAL forever.
+        self._fd_lock = threading.RLock()
         self._fd = None
         self._open()
 

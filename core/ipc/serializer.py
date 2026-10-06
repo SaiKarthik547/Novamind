@@ -9,9 +9,14 @@ Rules enforced:
 4. Floats must not be NaN or Infinity.
 """
 
-import cbor2
 import math
 from typing import Any
+
+try:
+    import cbor2
+    HAS_CBOR2 = True
+except ImportError:
+    HAS_CBOR2 = False
 
 
 class SerializationError(Exception):
@@ -52,32 +57,43 @@ def _validate_schema(obj: Any, path: str = "$") -> None:
 
 def serialize(obj: dict) -> bytes:
     """
-    Validates and canonicalizes the payload into CBOR bytes.
+    Validates and canonicalizes the payload into CBOR bytes when available,
+    otherwise falls back to deterministic JSON.
     """
     if not isinstance(obj, dict):
         raise SerializationError("Root payload must be a dictionary.")
-    
+
     _validate_schema(obj)
-    
-    try:
-        # Canonical flag enforces sorted keys and deterministic lengths
-        return cbor2.dumps(obj, canonical=True)
-    except Exception as e:
-        raise SerializationError(f"CBOR serialization failed: {e}")
+
+    if HAS_CBOR2:
+        try:
+            # Canonical flag enforces sorted keys and deterministic lengths
+            return cbor2.dumps(obj, canonical=True)
+        except Exception as e:
+            raise SerializationError(f"CBOR serialization failed: {e}")
+    else:
+        return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
 def deserialize(data: bytes) -> dict:
     """
-    Deserializes CBOR bytes back into a payload.
+    Deserializes CBOR bytes back into a payload when available,
+    otherwise falls back to deterministic JSON.
     Validates the structure post-deserialization.
     """
-    try:
-        obj = cbor2.loads(data)
-    except Exception as e:
-        raise SerializationError(f"CBOR deserialization failed: {e}")
-        
+    if HAS_CBOR2:
+        try:
+            obj = cbor2.loads(data)
+        except Exception as e:
+            raise SerializationError(f"CBOR deserialization failed: {e}")
+    else:
+        try:
+            obj = json.loads(data.decode("utf-8"))
+        except Exception as e:
+            raise SerializationError(f"JSON deserialization failed: {e}")
+
     if not isinstance(obj, dict):
         raise SerializationError("Deserialized root payload is not a dictionary.")
-        
+
     _validate_schema(obj)
     return obj

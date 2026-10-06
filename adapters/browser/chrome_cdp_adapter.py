@@ -39,30 +39,29 @@ class ChromeCDPAdapter(ApplicationAdapter):
 
     def execute(self, intent: 'ExecutionIntent') -> Any:
         self._state = AdapterState.EXECUTING
-        # Execute CDP command, e.g. Input.dispatchMouseEvent, Runtime.evaluate
+        # Transitional stub.
+        # Chrome CDP execution is NOT implemented as a canonical lane yet.
+        # Do not treat this as a production execution path.
         operation = intent.operation
-        
+
         if operation == "navigate":
             self._navigation_epoch += 1
-            self._dom_snapshot_epoch = 0 # Reset on navigation
-            
-        elif action == "mutate":
+            self._dom_snapshot_epoch = 0
+        elif operation == "mutate":
             self._dom_snapshot_epoch += 1
-            
+
         self._state = AdapterState.ATTACHED
         return {"navigation_epoch": self._navigation_epoch, "dom_epoch": self._dom_snapshot_epoch}
 
     def verify(self, mode: VerificationMode) -> bool:
         self._state = AdapterState.VERIFYING
-        if mode == VerificationMode.STRUCTURAL:
-            # Check DOM nodes via CDP
-            success = True
-        elif mode == VerificationMode.VISUAL:
-            # Check CDP screenshot
-            success = True
-        else:
-            success = True
-            
+        # Transitional stub. No real verification is implemented here.
+        success = False
+
+        if mode in (VerificationMode.STRUCTURAL, VerificationMode.VISUAL):
+            # Not implemented; do not claim success.
+            success = False
+
         self._state = AdapterState.ATTACHED
         return success
 

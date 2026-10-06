@@ -10,9 +10,24 @@ import uuid
 from typing import Optional, Callable, Dict, Any
 from abc import ABC, abstractmethod
 
-from core.contracts.runtime_events import TransportState, PROTOCOL_VERSION, MessageType
+from core.contracts.runtime_events import PROTOCOL_VERSION, MessageType
 from core.ipc.frame_reader import FrameReader, FrameReadError
 from core.ipc.frame_writer import FrameWriter, FrameWriteError
+
+
+class TransportState:
+    """IPC transport lifecycle states.
+
+    This is an IPC transport concern, not a canonical runtime lifecycle state.
+    It is defined here rather than leaked into the canonical runtime-events contract.
+    """
+    DISCONNECTED = "DISCONNECTED"
+    CONNECTING = "CONNECTING"
+    HANDSHAKING = "HANDSHAKING"
+    ACTIVE = "ACTIVE"
+    DEGRADED = "DEGRADED"
+    QUIESCING = "QUIESCING"
+    TERMINATED = "TERMINATED"
 
 logger = logging.getLogger(__name__)
 

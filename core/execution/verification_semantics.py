@@ -10,7 +10,7 @@ import time
 import logging
 import threading
 from typing import Optional, Any, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from abc import ABC, abstractmethod
 
 from core.execution.intent_result import IntentResult
@@ -48,8 +48,13 @@ class AsyncExecutionFuture:
     dispatch_metrics: dict
     pre_state_snapshot: Any
     verifier: Optional[PassiveVerifier]
-    
-    _completion_event: threading.Event = threading.Event()
+
+    # NOTE: default_factory is mandatory here. A plain ``= threading.Event()``
+    # evaluates once at class creation, which would share ONE completion event
+    # across every future in the process — futures would resolve each other's
+    # waits (first resolution makes all later wait() calls return instantly,
+    # usually with _final_result still None).
+    _completion_event: threading.Event = field(default_factory=threading.Event)
     _final_result: Optional[IntentResult] = None
     
     def resolve(self, result: IntentResult) -> None:

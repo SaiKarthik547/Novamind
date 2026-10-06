@@ -57,7 +57,17 @@ class WorkerBase:
                     # Send ACK
                     self._send_frame(FrameType.HANDSHAKE_ACK.value, {}, correlation_id)
                     logger.info("Handshake complete.")
-                    
+
+                elif frame_type == FrameType.HEARTBEAT.value:
+                    # Protocol completion: the supervisor watchdog declares a
+                    # worker dead after HEARTBEAT_TIMEOUT unless it observes
+                    # heartbeat ACKs. Reply so long-lived workers survive.
+                    self._send_frame(
+                        FrameType.HEARTBEAT.value,
+                        {"ack_timestamp": payload.get("timestamp")},
+                        correlation_id,
+                    )
+
                 elif frame_type == FrameType.EXECUTE_REQUEST.value:
                     try:
                         result = self.handle_request(payload)

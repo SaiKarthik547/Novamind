@@ -95,3 +95,45 @@ class PanicLevel(Enum):
     KERNEL_CORRUPTION = "kernel_corruption"
     TIMEOUT = "timeout"
     IPC_DESYNC = "ipc_desync"
+
+
+# ── IPC/event type taxonomy (transitional canonical) ──────────────────────────
+
+class MessageType(Enum):
+    """Canonical IPC message envelope types."""
+    COMMAND = "COMMAND"
+    EVENT = "EVENT"
+    STATE_UPDATE = "STATE_UPDATE"
+    HEARTBEAT = "HEARTBEAT"
+    ERROR = "ERROR"
+    SYSTEM = "SYSTEM"
+
+
+class EventType(Enum):
+    """Canonical event type taxonomy used by IPC and runtime observers."""
+    SYSTEM_HEARTBEAT = "system_heartbeat"
+    WORKER_STARTED = "worker_started"
+    WORKER_BOUND = "worker_bound"
+    WORKER_KILLED = "worker_killed"
+    AGENT_LIFECYCLE_CREATED = "agent_lifecycle_created"
+    AGENT_LIFECYCLE_DESTROYED = "agent_lifecycle_destroyed"
+    AGENT_TASK_STARTED = "agent_task_started"
+    AGENT_TASK_COMPLETED = "agent_task_completed"
+    AGENT_TASK_FAILED = "agent_task_failed"
+
+
+MessageType._ALL: frozenset = frozenset({m.value for m in MessageType})
+EventType._ALL: frozenset = frozenset({e.value for e in EventType})
+
+
+# ── Worker death reason taxonomy ──────────────────────────────────────────────
+
+class WorkerDeathReason(Enum):
+    """Canonical reasons for worker death, used by WorkerSupervisor and recovery."""
+    UNKNOWN = "unknown"
+    UNHANDLED_EXCEPTION = "unhandled_exception"
+    CAPABILITY_VIOLATION = "capability_violation"
+    IPC_TIMEOUT = "ipc_timeout"
+    SUPERVISOR_TERMINATED = "supervisor_terminated"
+    JOB_OBJECT_ERROR = "job_object_error"
+    SANDBOX_ERROR = "sandbox_error"

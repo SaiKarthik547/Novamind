@@ -28,7 +28,11 @@ class WorkerSupervisor:
         self.death_reason = WorkerDeathReason.UNKNOWN
         
         self.process: Optional[subprocess.Popen] = None
-        self._lock = threading.Lock()
+        # RLock (not Lock): start() and stop() hold this lock while calling
+        # send_frame(), which acquires it again on the same thread. A plain
+        # threading.Lock deadlocks on that re-acquisition — workers could
+        # never complete spawn or shutdown.
+        self._lock = threading.RLock()
         self._seq_num = 0
         
         # OS-level Containment Boundary
@@ -48,30 +52,32 @@ class WorkerSupervisor:
         # Heartbeat ownership
         self._last_heartbeat_ack_time = time.time()
 
-    def _emit_wal_event(self, event_type: str, details: dict):
-        """Write-Ahead Log event emission using RecoveryJournal."""
-        logger.info(f"[WAL] {event_type} | {details}")
-        
-        # We synthesize an IntentExecutionState to log this lifecycle event.
-        # Worker lifecycle events don't strictly have an intent_id, so we use the worker_id.
+    def _emit_runtime_event(self, event_type: str, details: dict):
+        """
+        Durable emission of worker lifecycle events.
+
+        These are runtime events (EventType), NOT intent-execution state
+        transitions. The previous implementation journaled them into the
+        intent WAL with a synthesized IntentExecutionState and failed on
+        every call (nonexistent IntentExecutionState.TERMINATED member, plus
+        a non-serializable EventType enum in the payload). They now go to the
+        canonical runtime topology, which fsyncs them before propagation.
+        """
+        logger.info(f"[RuntimeEvent] {event_type} | {details}")
         try:
-            from core.execution.recovery_journal import RecoveryJournal
-            from core.execution.intent_execution_state import IntentExecutionState
-            journal = RecoveryJournal.get_instance()
-            
-            # Map EventType to closest IntentExecutionState if applicable,
-            # or use a generic state (like DISPATCHED/COMPLETED)
-            state_val = IntentExecutionState.DISPATCHED
-            if event_type == EventType.WORKER_KILLED:
-                state_val = IntentExecutionState.TERMINATED
-                
-            journal.log_transition(
-                intent_id=self.identity.worker_id,
-                state=state_val,
-                payload={"event_type": event_type, "details": details}
+            from core.contracts.runtime_events import SchedulerEvent
+            from core.orchestration.event_bus import get_event_bus
+
+            action = event_type.value if isinstance(event_type, EventType) else str(event_type)
+            get_event_bus().emit_sync(
+                SchedulerEvent(
+                    action=action,
+                    target_queue_id=self.identity.worker_id,
+                    reason=str(details),
+                )
             )
         except Exception as e:
-            logger.error(f"Failed to write WAL event for {self.identity.worker_id}: {e}")
+            logger.error(f"Failed to emit runtime event for {self.identity.worker_id}: {e}")
 
     def start(self):
         with self._lock:
@@ -79,7 +85,7 @@ class WorkerSupervisor:
                 return
 
             logger.info(f"Starting worker {self.identity.worker_id}...")
-            self._emit_wal_event(EventType.WORKER_STARTED, {"worker_id": self.identity.worker_id})
+            self._emit_runtime_event(EventType.WORKER_STARTED, {"worker_id": self.identity.worker_id})
             
             try:
                 # 1. Spawn Process
@@ -100,13 +106,13 @@ class WorkerSupervisor:
             # 2. Assign Job Object (Commit to OS Sandbox)
             try:
                 self.sandbox.assign_process(self.process.pid)
-                self._emit_wal_event(EventType.WORKER_BOUND, {"worker_id": self.identity.worker_id, "pid": self.process.pid})
+                self._emit_runtime_event(EventType.WORKER_BOUND, {"worker_id": self.identity.worker_id, "pid": self.process.pid})
             except JobAssignmentError as e:
                 logger.error(f"Job Object assignment failed: {e}. ROLLING BACK SPAWN.")
                 self.process.kill()
                 self.death_reason = WorkerDeathReason.CAPABILITY_VIOLATION
                 self.state = WorkerState.DEAD
-                self._emit_wal_event(EventType.WORKER_KILLED, {"worker_id": self.identity.worker_id, "reason": "JobAssignmentError"})
+                self._emit_runtime_event(EventType.WORKER_KILLED, {"worker_id": self.identity.worker_id, "reason": "JobAssignmentError"})
                 return
 
             # 3. Initialize IPC & Watchdog
@@ -148,13 +154,22 @@ class WorkerSupervisor:
                 finally:
                     # Sandbox close guarantees OS-level termination of process and any children
                     self.sandbox.close()
-                    # IPC Cleanup
-                    if self.process.stdin: self.process.stdin.close()
-                    if self.process.stdout: self.process.stdout.close()
-                    if self.process.stderr: self.process.stderr.close()
-                    
+                    # IPC cleanup. Closing a pipe whose peer process is already
+                    # gone can raise (Errno 22 on Windows) — a cleanup failure
+                    # must NOT prevent the FSM reaching DEAD below.
+                    for stream_name in ("stdin", "stdout", "stderr"):
+                        stream = getattr(self.process, stream_name, None)
+                        if stream:
+                            try:
+                                stream.close()
+                            except OSError as exc:
+                                logger.debug(
+                                    f"Worker {self.identity.worker_id}: {stream_name}.close() "
+                                    f"failed (peer gone): {exc}"
+                                )
+
             self.state = WorkerState.DEAD
-            self._emit_wal_event(EventType.WORKER_KILLED, {
+            self._emit_runtime_event(EventType.WORKER_KILLED, {
                 "worker_id": self.identity.worker_id, 
                 "reason": self.death_reason.value
             })

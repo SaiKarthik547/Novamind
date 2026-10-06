@@ -20,6 +20,7 @@ Rules:
 import hashlib
 import json
 import math
+from enum import Enum
 from typing import Any
 
 
@@ -29,11 +30,27 @@ def _canonicalize(obj: Any) -> Any:
         return {k: _canonicalize(v) for k, v in sorted(obj.items())}
     if isinstance(obj, (list, tuple)):
         return [_canonicalize(v) for v in obj]
+    if isinstance(obj, Enum):
+        # Contract enums (core.contracts.* and elsewhere) serialize as their
+        # declared value, recursively canonicalized. Without this, any event
+        # carrying a plain (non str-mixin) Enum crashes json.dumps — meaning
+        # it could never be journaled at all. For str-mixin enums this is a
+        # no-op: their value is exactly the string content json emitted.
+        return _canonicalize(obj.value)
     if isinstance(obj, float):
         if math.isnan(obj) or math.isinf(obj):
             return None  # Explicitly block non-finite floats
         return round(obj, 3)  # ms-resolution determinism
     return obj
+
+
+def canonicalize(obj: Any) -> Any:
+    """
+    Public entry point: recursively canonicalize an object in place-free form
+    (enums -> declared values, sorted dict keys, ms-resolution floats).
+    Use before both hashing AND persisting so stored bytes and digests agree.
+    """
+    return _canonicalize(obj)
 
 
 def canonical_dumps(obj: Any) -> str:

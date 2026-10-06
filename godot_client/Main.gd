@@ -1,5 +1,7 @@
 extends Node
 
+class_name Main
+
 var hub: CommandHub
 var player: Player
 var visualizer: AgentVisualizer
