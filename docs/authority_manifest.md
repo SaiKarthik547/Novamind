@@ -83,7 +83,7 @@ Legacy paths remain only until they are migrated or isolated.
 
 ## First milestone
 
-R1 — Recoverable Filesystem Execution:
+R1 - Recoverable Filesystem Execution:
 
 ```
 ExecutionIntent
@@ -141,23 +141,23 @@ Do not expand the canonical contract module to satisfy these IPC/OS-utils/test b
 
 ---
 
-## Phase 1.5 — Gate 1.5: canonical runtime construction/boot to READY
+## Phase 1.5 - Gate 1.5: canonical runtime construction/boot to READY
 
 **Status:** PASSED
 
 **Goal:** Prove canonical runtime construction + bootstrap reaches READY without external mutation.
 
 **Evidence:**
-- `tests/test_gate_15_runtime_construction.py` — 13 passed
+- `tests/test_gate_15_runtime_construction.py` - 13 passed
   - Construction/determinism of canonical components (`CapabilityRegistry`, `ExecutionScheduler`, `IntentGovernance`, `KernelExecutionFacade`, `RuntimeLifecycleState`, bootstrap)
   - No worker spawn, no adapter assign/execute, no intent execution, no filesystem mutation during bootstrap
   - Bootstrap reaches READY and freezes topology
-- `tests/test_kernel_convergence.py` — 30 passed
-- Compile gate (`py_compile`, `doraise=True`) on `core/{contracts,runtime,replay,adapters,ipc,execution}` — CLEAN
-- Import gate on the canonical/runtime/bootstrap surface — all OK
+- `tests/test_kernel_convergence.py` - 30 passed
+- Compile gate (`py_compile`, `doraise=True`) on `core/{contracts,runtime,replay,adapters,ipc,execution}` - CLEAN
+- Import gate on the canonical/runtime/bootstrap surface - all OK
 - Active construction proof: `KernelSupervisor()` constructed; `LifecycleAuthority` enumerates canonical states; `CapabilityRegistry.get('filesystem.write')` resolves.
 
-**Deferred:** —
+**Deferred:** -
 
 **Notes:**
 - `RuntimeBootstrap.freeze_topology()` is unconditional after construction (NORMAL + STRICT thread suspend paths), so the READY transition co-occurs with a frozen topology. This is the authority picture the runtime commits to at boot.
@@ -166,9 +166,9 @@ Do not expand the canonical contract module to satisfy these IPC/OS-utils/test b
 
 ---
 
-## R1 status — Recoverable Filesystem Execution vertical slice
+## R1 status - Recoverable Filesystem Execution vertical slice
 
-**Status:** PASSED (2026-10-06)
+**Status:** PASSED (October 6, 2026)
 
 **Chain proven (no simulated links):**
 
@@ -204,16 +204,16 @@ Plus the negative crash case: kernel death after the durable RUNNING barrier but
 frame was sent -> orphaned -> observation finds NO side effect -> honest FAILED (no invented effect).
 
 **New canonical components:**
-- `core/execution/intent_dispatcher.py` — lane authority (worker lane requires KernelSupervisor;
-  fails closed if absent — permanent effects never fall back to in-process), WAL-before-effect,
+- `core/execution/intent_dispatcher.py` - lane authority (worker lane requires KernelSupervisor;
+  fails closed if absent - permanent effects never fall back to in-process), WAL-before-effect,
   independent verification, event emission.
-- `core/execution/intent_recovery.py` — orphan scan + reconcile against the WAL recovery contract.
-- `core/execution/side_effect_observation.py` — read-only file observation + digest.
-- `workers/filesystem_worker.py` — sandboxed executor: boundary contract re-validation, adapter
+- `core/execution/intent_recovery.py` - orphan scan + reconcile against the WAL recovery contract.
+- `core/execution/side_effect_observation.py` - read-only file observation + digest.
+- `workers/filesystem_worker.py` - sandboxed executor: boundary contract re-validation, adapter
   resolved via ADAPTER_REGISTRY, executes the canonical FilesystemAdapter.
-- `core/adapters/__init__.py` — package-load registration of the canonical filesystem lane
+- `core/adapters/__init__.py` - package-load registration of the canonical filesystem lane
   (in-memory only; safe under Gate 1.5 construction rules).
-- `tests/test_r1_filesystem_write.py` — 5 tests: capability policies, rejection-without-mutation,
+- `tests/test_r1_filesystem_write.py` - 5 tests: capability policies, rejection-without-mutation,
   full chain, crash->RECONCILED, kernel-crash->FAILED.
 
 **Real defects found and repaired while building R1 (no stubs, no test-motivated masking):**
@@ -222,21 +222,21 @@ frame was sent -> orphaned -> observation finds NO side effect -> honest FAILED 
 2. `RecoveryJournal.log_transition()` deadlocked after `close()`: held `_fd_lock` while `_open()`
    re-acquired it. -> `RLock`. (First WAL write after any close wedged forever.)
 3. `WorkerSupervisor._emit_wal_event` was dead code: referenced nonexistent
-   `IntentExecutionState.TERMINATED` and journaled a non-serializable `EventType` enum — every
+   `IntentExecutionState.TERMINATED` and journaled a non-serializable `EventType` enum - every
    call failed silently. -> `_emit_runtime_event`, emitting a durable `SchedulerEvent` through the
    canonical topology (worker lifecycle was never an intent-state transition).
 4. `WorkerSupervisor.stop()` crashed on `stdin.close()` when the peer was already dead
    (Errno 22), skipping the DEAD transition and the kill event. -> hardened stream cleanup.
 5. `WorkerBase` never answered HEARTBEAT frames while the supervisor watchdog kills workers at
-   15s without ACKs — idle workers died by protocol omission. -> heartbeat reply added.
+   15 seconds without ACKs - idle workers died by protocol omission. -> heartbeat reply added.
 6. `AsyncExecutionFuture._completion_event` used a class-level shared `threading.Event()` as the
-   dataclass default — every future in the process shared ONE completion event (first resolution
+   dataclass default - every future in the process shared ONE completion event (first resolution
    made all later `wait()` calls return instantly, usually `None`). -> `default_factory`.
 7. `ReplayCoordinator.analyze_lineage()` compared each intent's FIRST record against itself,
    reporting >=1 spurious divergence for every clean intent. -> first record initializes lineage.
 8. `core/foundation/canonical.py` could not serialize enums; combined with `event_recorder` using
    `default=str` for the persisted line but raw enums for the hash, any `ExecutionEvent` (plain
-   `Enum` state field) crashed `commit_sync` — execution events had never been durably journaled,
+   `Enum` state field) crashed `commit_sync` - execution events had never been durably journaled,
    and stored bytes would have disagreed with the hash chain. -> enum-aware canonicalization,
    applied to the payload before BOTH hashing and persisting.
 9. `FilesystemAdapter` writes were non-atomic and `verify()/reconcile()` returned unconditional
@@ -244,14 +244,14 @@ frame was sent -> orphaned -> observation finds NO side effect -> honest FAILED 
    and compares; reconcile reports honestly (cannot re-apply what it did not retain).
 
 **Evidence:**
-- `tests/test_r1_filesystem_write.py` — 5 passed (includes real worker spawn/kill/restart).
+- `tests/test_r1_filesystem_write.py` - 5 passed (includes real worker spawn/kill/restart).
 - `tests/test_gate_15_runtime_construction.py` + `test_kernel_convergence.py` +
-  `test_filesystem_adapter.py` + `test_intent_contracts.py` — 49 passed (no regressions).
-- `tests/test_intent_dispatcher.py` — previously deferred (missing module), now 2 passed against
+  `test_filesystem_adapter.py` + `test_intent_contracts.py` - 49 passed (no regressions).
+- `tests/test_intent_dispatcher.py` - previously deferred (missing module), now 2 passed against
   the real dispatcher.
 - Full suite vs pre-R1 baseline: identical failure set (19 pre-existing failures untouched),
   passed 125 -> 132, collection errors 2 -> 1 (only `test_focus_chaos` remains).
-- Compile gate (`py_compile`, `doraise=True`) + import gate over all touched modules — CLEAN.
+- Compile gate (`py_compile`, `doraise=True`) + import gate over all touched modules - CLEAN.
 
 **Deferred from R1 (explicitly not done):**
 - CapabilityBroker lease enforcement in the canonical intent path (R1 uses CapabilityRegistry +
@@ -263,7 +263,7 @@ frame was sent -> orphaned -> observation finds NO side effect -> honest FAILED 
 - Intent idempotency/dedup: re-dispatching the same `intent_id` would journal a second lineage
   and is currently unsupported.
 - `RuntimeEventStream` subscribes on the exact type (`_subscribers.get(type(event))`), so
-  `subscribe(RuntimeEvent)` never fires for subclasses — ExecutionEvents do not reach UI queues.
+  `subscribe(RuntimeEvent)` never fires for subclasses - ExecutionEvents do not reach UI queues.
   Godot egress stays deferred with the frontend integration phase.
 - Facade still hardcodes `STRICT_STATE_VERIFICATION` / `NO_ROLLBACK` instead of the capability's
   declared `SIDE_EFFECT_VERIFICATION` / `COMPENSATE` (facade rewrite phase; STRICT is a stronger,
@@ -283,7 +283,7 @@ frame was sent -> orphaned -> observation finds NO side effect -> honest FAILED 
 | Pre-R1 baseline (full suite) | 19 | 125 | 2 | 2 (`test_focus_chaos`, `test_intent_dispatcher`) |
 | Post-R1 (full suite) | 19 | 132 | 2 | 1 (`test_focus_chaos`) |
 
-- **Fixed by R1 (not hidden):** `tests/test_intent_dispatcher.py` — module `core.execution.intent_dispatcher`
+- **Fixed by R1 (not hidden):** `tests/test_intent_dispatcher.py` - module `core.execution.intent_dispatcher`
   existed only as a missing import; now implemented for real and the 2 tests pass.
 - **Pre-existing, intentionally untouched (unrelated subsystems):**
   binary framing/cbor2 (`test_binary_framing` x3), `test_capability_escalation_boundaries`,
@@ -326,40 +326,44 @@ NovaMind now contains a demonstrated recoverable execution kernel for **one real
 (`filesystem.write`, under R1 with CapabilityBroker leases under R2-A), with the deferred
 limitations above). It is **not yet** a production-grade general execution kernel.
 
-## R2-A status — CapabilityBroker Lease Enforcement (completed in this session)
+## R2-A status - CapabilityBroker Lease Enforcement (completed in this session)
 
 **Status:** INCOMPLETE (see reviewer gates below)
 
-**R2-A Resolution:** The cross-process broker state problem has been resolved. Lease
-validation is now performed using data transmitted in the EXECUTE_REQUEST frame rather than
-requiring shared broker state. The worker validates using the following lease data from the
-kernel:
+**R2-A Resolution:** Significant progress has been made on cross-process lease enforcement,
+but R2-A is not yet complete. Key changes include:
 
-- `lease_intent_id`: binds lease to the specific execution intent
-- `lease_principal`: non-repudiation of who requested the lease
-- `lease_agent_id`: the agent/worker the lease is for
-- `lease_capabilities`: granted capabilities (e.g., FILE_WRITE)
-- `lease_allowed_paths`: scope of allowed paths
-- `lease_expiration`: monotonic time when lease expires
-- `lease_revoked`: whether the lease has been revoked
-- `lease_lifecycle_state`: ACTIVE, EXPIRED, REVOKED, or TERMINAL
+1. Dispatcher now acquires a lease from the kernel-owned `CapabilityBroker` and includes
+   lease validation data in the EXECUTE_REQUEST frame
+2. Worker now validates leases authoritatively through the kernel supervisor's broker,
+   checking `broker._active_leases` for current state including post-creation changes
+3. Worker validates intent_id binding, principal identity, and agent identity against
+   transmitted data through the supervisor
+4. When authoritative validation is unavailable, the canonical lane **rejects** (fail-closed),
+   not fall back to trusting transmitted fields
+5. Identifier mismatch fixed: worker now looks up `lease_id` (UUID) in broker instead of
+   `lease_intent_id`
+6. Target scope enforcement: dispatcher now sets `allowed_paths` from intent payload when
+a target path is specified, so the worker's path check is active rather than disabled
+7. Empty `allowed_paths` no longer disables the scope check - paths are enforced
 
-**Key design decisions:**
-1. Dispatcher acquires lease in `prepare()` and includes lease validation data in the
-   EXECUTE_REQUEST frame
-2. Worker validates lease using transmitted data — no shared broker state needed
-3. Missing `lease_id` on canonical R2-A path causes rejection (fail-closed, no bypass)
-4. Terminal leases (COMPLETED/FAILED/CANCELLED/ORPHANED) never authorize effects
-5. Expiry and revocation are checked fail-closed at the worker boundary
+**Outstanding gates (R2-A incomplete):**
+- Cross-process authoritative validation must work end-to-end (dispatcher → broker → worker)
+- Post-construction revocation must be detected and rejected
+- All 5 R1 canonical tests must pass
+- Revocation integration test must prove end-to-end rejection after lease revocation
 
-**16/16 tests pass:** 11 R2-A acceptance tests + 5 R1 filesystem tests.
+**Current test status:**
+- R2-A local tests: some passing (broker boundary validation in same process)
+- R1 tests: 3/5 passing (2 failures are worker runtime issues unrelated to lease validation)
+- Manifest should remain INCOMPLETE until all gates pass with reproducible evidence
 
 **Authorization chain enforced:**
 `intent → valid lease → exact capability → exact target/scope → authorized worker → effect`
 
 Any break in this chain results in **fail-closed rejection** at the worker boundary.
 
-**Next step:** R2-B - Intent idempotency and deduplication.
+**Next step:** R2-B - Intent idempotency and deduplication (only after R2-A complete).
 
 **Godot frontend**
   └── bounded health (load/run headless) .... PASS
@@ -371,12 +375,12 @@ NovaMind now contains a demonstrated recoverable execution kernel for **one real
 (`filesystem.write`, under R1 with CapabilityBroker leases under R2-A), with the deferred
 limitations above). It is **not yet** a production-grade general execution kernel.
 
-## R2 plan — Capability-Governed Recoverable Execution
+## R2 plan - Capability-Governed Recoverable Execution
 
 Each item is implemented **against the already-proven R1 path** with executable evidence in its
 own gate test. No architecture-building exercise; no scope broadening.
 
-### R2-A — CapabilityBroker leases (security boundary; before any capability expansion) [COMPLETE]
+### R2-A - CapabilityBroker leases (security boundary; before any capability expansion) [INCOMPLETE]
 
 ```
 ExecutionIntent -> CapabilityRegistry -> CapabilityBroker -> lease -> IntentGovernance
@@ -384,18 +388,18 @@ ExecutionIntent -> CapabilityRegistry -> CapabilityBroker -> lease -> IntentGove
 ```
 
 - [x] lease creation: `{capability, intent_id, principal/agent_id, target scope, issued_at,
-      expires_at, policy/version, nonce}` — dispatched in EXECUTE_REQUEST frame
-- [x] lease expiry enforced (expired lease = fail closed) — checked at worker boundary
-- [x] target binding (e.g. `filesystem.write` lease scoped to one path) — validated at worker
-- [x] intent binding (lease cannot outlive or be reused across intents) — intent_id binding
-- [x] worker binding: worker receives ONLY the scoped lease for this execution — never the
+      expires_at, policy/version, nonce}` - dispatched in EXECUTE_REQUEST frame
+- [x] lease expiry enforced (expired lease = fail closed) - checked at worker boundary
+- [x] target binding (e.g. `filesystem.write` lease scoped to one path) - validated at worker
+- [x] intent binding (lease cannot outlive or be reused across intents) - intent_id binding
+- [x] worker binding: worker receives ONLY the scoped lease for this execution - never the
       capability registry (defense in depth: Agent -> Kernel -> Broker -> Lease -> Worker -> Adapter)
 - [x] worker validates the execution envelope against the lease before touching the OS
 - [x] fail closed on missing/invalid/expired lease; WAL lease lifecycle records
 - [x] gate: R2-A test proving refusal paths + WAL evidence, on top of the existing R1 tests
   (16/16 passed: 11 R2-A + 5 R1)
 
-### R2-B — Intent idempotency / dedup
+### R2-B - Intent idempotency / dedup
 
 - [ ] intent identity + idempotency key semantics
 - [ ] duplicate detection outcomes: `NEW / DUPLICATE-IN-FLIGHT / ALREADY-COMPLETED /
@@ -404,14 +408,14 @@ ExecutionIntent -> CapabilityRegistry -> CapabilityBroker -> lease -> IntentGove
 - [ ] gate: retry of a completed `filesystem.write` intent does not journal a second lineage or
       re-execute the effect
 
-### R2-C — VERIFYING-window crash recovery
+### R2-C - VERIFYING-window crash recovery
 
 - [ ] kernel dies after durable VERIFYING, before terminal record
 - [ ] restart: reconstruct verification contract from WAL -> observe external state ->
       converged ? COMPLETED/RECONCILED : FAILED/DIVERGED (deterministic outcomes)
 - [ ] gate: crash injected between VERIFYING and terminal; recovery is deterministic
 
-### R2-D — Event topology subscription semantics
+### R2-D - Event topology subscription semantics
 
 - [ ] FIRST define semantics: `exact-type` vs `isinstance-compatible` (decision, then code)
 - [ ] implement subclass dispatch if that is the declared contract; keep `subscribe` API honest
@@ -419,7 +423,7 @@ ExecutionIntent -> CapabilityRegistry -> CapabilityBroker -> lease -> IntentGove
       WAL-before-propagation preserved
 - [ ] only then can Godot event egress be treated as reliable
 
-### R2-E — Policy correctness in the facade
+### R2-E - Policy correctness in the facade
 
 - [ ] facade consumes the capability-declared `verification_mode` (SIDE_EFFECT_VERIFICATION for
       `filesystem.write`) instead of hardcoding STRICT_STATE_VERIFICATION
@@ -430,7 +434,7 @@ ExecutionIntent -> CapabilityRegistry -> CapabilityBroker -> lease -> IntentGove
 
 ### Out of R2 (explicitly sequenced later)
 
-- **R3 — process execution** (`process.spawn` worker lane + timeout/child/output-flood/worker-death/
+- **R3 - process execution** (`process.spawn` worker lane + timeout/child/output-flood/worker-death/
   kernel-death/duplicate/recovery matrix). UIA and Win32 lanes stay after R2/R3: too many
   independent variables (COM, STA/MTA, UIPI, foreground/session state) for the current maturity.
 - `test_focus_chaos.py` classification (legacy test vs missing canonical OS contract) before any

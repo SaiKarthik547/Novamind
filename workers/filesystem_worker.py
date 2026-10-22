@@ -113,7 +113,7 @@ class FilesystemWorker(WorkerBase):
             broker = getattr(self._supervisor, 'broker', None)
             if broker is not None and hasattr(broker, '_active_leases'):
                 # Extract lease identifier from transmitted data
-                lease_id = lease_data.get("lease_intent_id")
+                lease_id = lease_data.get("lease_id")
                 if lease_id and lease_id in broker._active_leases:
                     lease = broker._active_leases[lease_id]
                     # Fail-closed: lease must be valid per current broker state
@@ -198,7 +198,8 @@ class FilesystemWorker(WorkerBase):
             determinism=determinism,
             timeout_ms=int(d.get("timeout_ms", 30000)),
             authority_origin=d.get("authority_origin", "legacy_bridge"),
-        )    def _validate_lease_at_boundary(self, intent: ExecutionIntent, lease_data: dict) -> None:
+        )
+    def _validate_lease_at_boundary(self, intent: ExecutionIntent, lease_data: dict) -> None:
         """R2-A: Validate the ExecutionLease at the worker boundary.
 
         R2-A enforcement: lease validation using transmitted data from the kernel,
@@ -407,4 +408,4 @@ class FilesystemWorker(WorkerBase):
 
 
 if __name__ == "__main__":
-    FilesystemWorker().run()
+    FilesystemWorker().run()

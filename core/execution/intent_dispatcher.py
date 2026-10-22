@@ -324,6 +324,7 @@ class IntentDispatcher:
                 "lease_agent_id": lease.agent_id,
                 "lease_capabilities": [cap.value for cap in lease.capabilities],
                 "lease_allowed_paths": lease.allowed_paths,
+                "lease_allowed_path_target": intent.payload.get("path", ""),
                 "lease_expiration": lease.expiration,
                 "lease_revoked": lease.revoked,
                 "lease_lifecycle_state": lease.lifecycle_state,
