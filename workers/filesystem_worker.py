@@ -36,16 +36,41 @@ class FilesystemWorker(WorkerBase):
         This is the canonical deserialization path: the dispatcher sends
         intent.to_dict() and the worker rebuilds the dataclass.
         """
-        # Convert dict back to ExecutionIntent - use __dataclass_fields__ for
-        # safe field access since we have from __future__ import annotations in
-        # execution_intent.py but not necessarily here.
-        from core.execution.execution_intent import ExecutionIntent
+        from core.execution.execution_intent import (
+            ExecutionIntent,
+            VerificationMode,
+            RollbackMode,
+            IntentPriority,
+            IntentDeterminismLevel,
+        )
 
         # Extract known fields; unknown fields are ignored.
         kwargs = {}
         for field_name in ExecutionIntent.__dataclass_fields__:
             if field_name in intent_dict:
-                kwargs[field_name] = intent_dict[field_name]
+                value = intent_dict[field_name]
+                # Convert enum-like fields from serialized strings back to instances.
+                if field_name == "verification_mode" and isinstance(value, str):
+                    try:
+                        value = VerificationMode(value)
+                    except ValueError:
+                        pass
+                elif field_name == "rollback_strategy" and isinstance(value, str):
+                    try:
+                        value = RollbackMode(value)
+                    except ValueError:
+                        pass
+                elif field_name == "priority" and isinstance(value, str):
+                    try:
+                        value = IntentPriority(value)
+                    except ValueError:
+                        pass
+                elif field_name == "determinism" and isinstance(value, str):
+                    try:
+                        value = IntentDeterminismLevel(value)
+                    except ValueError:
+                        pass
+                kwargs[field_name] = value
 
         # Ensure agent_id and lease_id have proper types
         kwargs.setdefault("agent_id", "UNKNOWN")

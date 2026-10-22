@@ -1,6 +1,7 @@
 import logging
 from typing import Dict, Optional
 
+from core.runtime.capability_broker import CapabilityBroker
 from core.runtime.worker_runtime import WorkerSupervisor
 from core.ipc.worker_protocol import WorkerIdentity, WorkerState
 from core.execution.recovery_journal import RecoveryJournal
