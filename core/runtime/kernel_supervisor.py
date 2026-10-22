@@ -26,6 +26,11 @@ class KernelSupervisor:
         self.event_bus = event_bus
         self.workers: Dict[str, WorkerSupervisor] = {}
 
+        # Canonical R2-A: one persistent CapabilityBroker authority for all leases.
+        # The dispatcher injects this same broker so the worker can validate
+        # against current authority rather than stale copied metadata.
+        self.broker = CapabilityBroker()
+
         # Re-establish the panic delegation point expected by the active bootstrap path.
         # This is transitional. It must not become a second panic authority.
         self.panic_manager = PanicManager(

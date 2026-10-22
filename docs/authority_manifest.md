@@ -309,9 +309,11 @@ GATE 1.5  Canonical construction + READY (no external mutation) PASS
    ↓
 R1        Recoverable filesystem execution .................. PASS
    ↓
-R2-A      CapabilityBroker lease enforcement ................ PASS
+R2-A      CapabilityBroker lease enforcement ................ INCOMPLETE
    ↓
 R2        Capability-governed recoverable execution ......... (deferred to R2-B)
+   ↓
+   **R2-A incomplete: cross-process lease enforcement not yet proven.**
 ```
 
 ```
@@ -387,17 +389,17 @@ ExecutionIntent -> CapabilityRegistry -> CapabilityBroker -> lease -> IntentGove
   -> Scheduler -> Worker -> Adapter
 ```
 
-- [x] lease creation: `{capability, intent_id, principal/agent_id, target scope, issued_at,
+- [ ] lease creation: `{capability, intent_id, principal/agent_id, target scope, issued_at,
       expires_at, policy/version, nonce}` - dispatched in EXECUTE_REQUEST frame
-- [x] lease expiry enforced (expired lease = fail closed) - checked at worker boundary
-- [x] target binding (e.g. `filesystem.write` lease scoped to one path) - validated at worker
-- [x] intent binding (lease cannot outlive or be reused across intents) - intent_id binding
-- [x] worker binding: worker receives ONLY the scoped lease for this execution - never the
+- [ ] lease expiry enforced (expired lease = fail closed) - checked at worker boundary
+- [ ] target binding (e.g. `filesystem.write` lease scoped to one path) - validated at worker
+- [ ] intent binding (lease cannot outlive or be reused across intents) - intent_id binding
+- [ ] worker binding: worker receives ONLY the scoped lease for this execution - never the
       capability registry (defense in depth: Agent -> Kernel -> Broker -> Lease -> Worker -> Adapter)
-- [x] worker validates the execution envelope against the lease before touching the OS
-- [x] fail closed on missing/invalid/expired lease; WAL lease lifecycle records
-- [x] gate: R2-A test proving refusal paths + WAL evidence, on top of the existing R1 tests
-  (16/16 passed: 11 R2-A + 5 R1)
+- [ ] worker validates the execution envelope against the lease before touching the OS
+- [ ] fail closed on missing/invalid/expired lease; WAL lease lifecycle records
+- [ ] gate: R2-A test proving refusal paths + WAL evidence, on top of the existing R1 tests
+  (claim removed until end-to-end cross-process lease enforcement is proven)
 
 ### R2-B - Intent idempotency / dedup
 

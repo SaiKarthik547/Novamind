@@ -62,9 +62,9 @@ class ExecutionLease:
     released_at: Optional[float] = None    # When lease was terminally released
 
     def is_valid(self) -> bool:
-        """Fail-closed: lease must be non-revoked and not expired."""
+        """Fail-closed: lease must be ACTIVE - non-revoked, not expired, and in active lifecycle state."""
         return (not self.revoked 
-                and not self.lifecycle_state in ("EXPIRED", "REVOKED", "TERMINAL")
+                and self.lifecycle_state == "ACTIVE"
                 and time.monotonic() < self.expiration)
 
     def check_capability(self, cap: Capability) -> bool:

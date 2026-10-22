@@ -434,9 +434,10 @@ class IntentDispatcher:
                 intent_dict["lease_id"] = lease_id_from_wal
             # Propagate lease validation data from wal_fields so worker can validate
             # the lease without needing shared broker state.
+            # Use nested structure so worker reads it as payload.get("intent", {}).get("lease_validation_data")
             lease_validation_data_from_wal = ctx.wal_fields.get("lease_validation_data")
             if lease_validation_data_from_wal is not None:
-                intent_dict.update(lease_validation_data_from_wal)
+                intent_dict["lease_validation_data"] = lease_validation_data_from_wal
             sup.send_frame(
                 FrameType.EXECUTE_REQUEST,
                 {"intent": intent_dict},
