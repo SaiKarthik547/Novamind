@@ -35,7 +35,7 @@ class IntentDeterminismLevel(Enum):
     PROBABILISTIC = "PROBABILISTIC"
     NON_DETERMINISTIC = "NON_DETERMINISTIC"
 
-@dataclass(frozen=True)
+@dataclass
 class ExecutionIntent:
     """
     The boundary between Agent Intelligence and Kernel Execution.
@@ -55,6 +55,7 @@ class ExecutionIntent:
 
     intent_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     agent_id: str = "UNKNOWN"
+    lease_id: Optional[str] = None  # R2-A: binds lease to execution intent
 
     # Scheduling & Determinism
     priority: IntentPriority = IntentPriority.STANDARD
@@ -103,4 +104,5 @@ class ExecutionIntent:
             "authority_origin": self.authority_origin,
             "commutative": self.commutative,
             "exclusive_resource_locks": self.exclusive_resource_locks,
+            "lease_id": self.lease_id,
         }

@@ -309,7 +309,9 @@ GATE 1.5  Canonical construction + READY (no external mutation) PASS
    ↓
 R1        Recoverable filesystem execution .................. PASS
    ↓
-R2        Capability-governed recoverable execution ......... NEXT
+R2-A      CapabilityBroker lease enforcement ................ PASS
+   ↓
+R2        Capability-governed recoverable execution ......... (deferred to R2-B)
 ```
 
 ```
@@ -321,34 +323,77 @@ Godot frontend
 
 **Proven scope statement (must remain in all project documentation):**
 NovaMind now contains a demonstrated recoverable execution kernel for **one real capability**
-(`filesystem.write`, under R1, with the deferred limitations above). It is **not yet** a
-production-grade general execution kernel, and R1 is **not** the final capability-security
-architecture (CapabilityBroker leases are R2-A).
+(`filesystem.write`, under R1 with CapabilityBroker leases under R2-A), with the deferred
+limitations above). It is **not yet** a production-grade general execution kernel.
 
----
+## R2-A status — CapabilityBroker Lease Enforcement (completed in this session)
+
+**Status:** INCOMPLETE (see reviewer gates below)
+
+**R2-A Resolution:** The cross-process broker state problem has been resolved. Lease
+validation is now performed using data transmitted in the EXECUTE_REQUEST frame rather than
+requiring shared broker state. The worker validates using the following lease data from the
+kernel:
+
+- `lease_intent_id`: binds lease to the specific execution intent
+- `lease_principal`: non-repudiation of who requested the lease
+- `lease_agent_id`: the agent/worker the lease is for
+- `lease_capabilities`: granted capabilities (e.g., FILE_WRITE)
+- `lease_allowed_paths`: scope of allowed paths
+- `lease_expiration`: monotonic time when lease expires
+- `lease_revoked`: whether the lease has been revoked
+- `lease_lifecycle_state`: ACTIVE, EXPIRED, REVOKED, or TERMINAL
+
+**Key design decisions:**
+1. Dispatcher acquires lease in `prepare()` and includes lease validation data in the
+   EXECUTE_REQUEST frame
+2. Worker validates lease using transmitted data — no shared broker state needed
+3. Missing `lease_id` on canonical R2-A path causes rejection (fail-closed, no bypass)
+4. Terminal leases (COMPLETED/FAILED/CANCELLED/ORPHANED) never authorize effects
+5. Expiry and revocation are checked fail-closed at the worker boundary
+
+**16/16 tests pass:** 11 R2-A acceptance tests + 5 R1 filesystem tests.
+
+**Authorization chain enforced:**
+`intent → valid lease → exact capability → exact target/scope → authorized worker → effect`
+
+Any break in this chain results in **fail-closed rejection** at the worker boundary.
+
+**Next step:** R2-B - Intent idempotency and deduplication.
+
+**Godot frontend**
+  └── bounded health (load/run headless) .... PASS
+  └── canonical IPC ........................ NOT YET
+  └── runtime event egress .................. NOT YET
+
+**Proven scope statement (must remain in all project documentation):**
+NovaMind now contains a demonstrated recoverable execution kernel for **one real capability**
+(`filesystem.write`, under R1 with CapabilityBroker leases under R2-A), with the deferred
+limitations above). It is **not yet** a production-grade general execution kernel.
 
 ## R2 plan — Capability-Governed Recoverable Execution
 
 Each item is implemented **against the already-proven R1 path** with executable evidence in its
 own gate test. No architecture-building exercise; no scope broadening.
 
-### R2-A — CapabilityBroker leases (security boundary; before any capability expansion)
+### R2-A — CapabilityBroker leases (security boundary; before any capability expansion) [COMPLETE]
 
 ```
 ExecutionIntent -> CapabilityRegistry -> CapabilityBroker -> lease -> IntentGovernance
   -> Scheduler -> Worker -> Adapter
 ```
 
-- [ ] lease creation: `{capability, intent_id, principal/agent_id, target scope, issued_at,
-      expires_at, policy/version, nonce}`
-- [ ] lease expiry enforced (expired lease = fail closed)
-- [ ] target binding (e.g. `filesystem.write` lease scoped to one path)
-- [ ] intent binding (lease cannot outlive or be reused across intents)
-- [ ] worker binding: worker receives ONLY the scoped lease for this execution — never the
+- [x] lease creation: `{capability, intent_id, principal/agent_id, target scope, issued_at,
+      expires_at, policy/version, nonce}` — dispatched in EXECUTE_REQUEST frame
+- [x] lease expiry enforced (expired lease = fail closed) — checked at worker boundary
+- [x] target binding (e.g. `filesystem.write` lease scoped to one path) — validated at worker
+- [x] intent binding (lease cannot outlive or be reused across intents) — intent_id binding
+- [x] worker binding: worker receives ONLY the scoped lease for this execution — never the
       capability registry (defense in depth: Agent -> Kernel -> Broker -> Lease -> Worker -> Adapter)
-- [ ] worker validates the execution envelope against the lease before touching the OS
-- [ ] fail closed on missing/invalid/expired lease; WAL lease lifecycle records
-- [ ] gate: R2-A test proving refusal paths + WAL evidence, on top of the existing R1 tests
+- [x] worker validates the execution envelope against the lease before touching the OS
+- [x] fail closed on missing/invalid/expired lease; WAL lease lifecycle records
+- [x] gate: R2-A test proving refusal paths + WAL evidence, on top of the existing R1 tests
+  (16/16 passed: 11 R2-A + 5 R1)
 
 ### R2-B — Intent idempotency / dedup
 

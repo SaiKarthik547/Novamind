@@ -124,7 +124,18 @@ class R1TestBase(unittest.TestCase):
             intent_id=intent_id,
             authority_origin="kernel",
         )
-        return intent, target, expected
+        # R2-A: Add lease validation data for canonical path authorization
+        lease_validation_data = {
+            "lease_intent_id": intent.intent_id,
+            "lease_principal": getattr(intent, "principal", "UNKNOWN"),
+            "lease_agent_id": getattr(intent, "agent_id", "UNKNOWN"),
+            "lease_capabilities": ["FILE_WRITE"],
+            "lease_allowed_paths": [os.path.dirname(target)],
+            "lease_expiration": 2000000000000.0,  # Far future
+            "lease_revoked": False,
+            "lease_lifecycle_state": "ACTIVE",
+        }
+        return intent, target, expected, lease_validation_data
 
     def wal_states(self, intent_id: str):
         with open(self.wal_path, "r", encoding="utf-8") as f:
@@ -204,7 +215,7 @@ class TestR1FullChain(R1TestBase):
         self.assertEqual(rb.lifecycle_authority.get_state(), RuntimeLifecycleState.READY)
 
         content = "R1 vertical slice: recoverable filesystem execution " * 4
-        intent, target, expected = self.make_intent("r1-full-0001", content)
+        intent, target, expected, _ = self.make_intent("r1-full-0001", content)
 
         # Baseline: topology journal lines already carrying this intent id
         # (from a previous run of this suite) must not satisfy the later
@@ -310,7 +321,7 @@ class TestR1CrashRecovery(R1TestBase):
 
     def test_worker_killed_before_verification_reconciles(self):
         content = "crash-window payload: write committed, verification never ran"
-        intent, target, expected = self.make_intent(
+        intent, target, expected, _ = self.make_intent(
             "r1-crash-0001", content, filename="crash_proof.txt"
         )
 

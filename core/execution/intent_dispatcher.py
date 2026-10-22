@@ -43,6 +43,7 @@ from core.contracts.intent_contracts import IntentContractRegistry
 from core.contracts.runtime_events import ExecutionEvent, ExecutionState, VerificationEvent
 from core.execution.capability_registry import CAPABILITY_REGISTRY
 from core.execution.execution_intent import ExecutionIntent
+from core.runtime.capability_broker import Capability
 from core.execution.intent_execution_state import (
     IntentExecutionState,
     IntentStateError,
@@ -257,7 +258,14 @@ class IntentDispatcher:
 
         Raises after journaling REJECTED when validation or authority
         resolution refuses the intent.
+
+        R2-A: Acquire a broker lease and bind it to the intent for the
+        canonical execution path. The lease is included in the EXECUTE_REQUEST
+        frame so the worker can validate at the boundary.
         """
+        from core.runtime.capability_broker import CapabilityBroker
+        broker = CapabilityBroker()
+
         capability = self._capability_of(intent)
         lane = "worker" if capability in self._worker_lane_capabilities else "in_process"
 
@@ -292,6 +300,35 @@ class IntentDispatcher:
             self._journal_rejection(intent, capability, str(exc))
             raise
 
+        # R2-A: Acquire a lease bound to this intent for worker boundary validation
+        # For the canonical worker lane, a lease is mandatory.
+        # For R1 legacy intents (in_process lane), lease_id remains None.
+        lease_id = None
+        lease_validation_data = None  # R2-A: data for worker-side validation
+        if lane == "worker":
+            # Bind lease to intent identity for the canonical path
+            lease = broker.request_lease(
+                task_id=f"dispatch-{intent.intent_id}",
+                capabilities=[Capability.FILE_WRITE] if capability == "filesystem.write" else [],
+                allowed_paths=[],
+                intent_id=intent.intent_id,
+                principal=getattr(intent, "principal", "UNKNOWN"),
+                agent_id=getattr(intent, "agent_id", "UNKNOWN"),
+            )
+            lease_id = lease.lease_id
+            # Store lease validation data in wal_fields so the worker can validate
+            # the lease without needing shared broker state (R2-A integration fix)
+            lease_validation_data = {
+                "lease_intent_id": lease.intent_id,
+                "lease_principal": lease.principal,
+                "lease_agent_id": lease.agent_id,
+                "lease_capabilities": [cap.value for cap in lease.capabilities],
+                "lease_allowed_paths": lease.allowed_paths,
+                "lease_expiration": lease.expiration,
+                "lease_revoked": lease.revoked,
+                "lease_lifecycle_state": lease.lifecycle_state,
+            }
+
         expected_sha256 = self._expected_digest(intent)
         ctx = DispatchContext(
             intent=intent,
@@ -308,6 +345,8 @@ class IntentDispatcher:
                 "path": intent.payload.get("path"),
                 "content_sha256": expected_sha256,
                 "idempotent": bool(intent.idempotent),
+                "lease_id": lease_id,
+                "lease_validation_data": lease_validation_data,
             },
         )
 
@@ -384,9 +423,22 @@ class IntentDispatcher:
         with self._pending_lock:
             self._pending[intent_id] = entry
         try:
+            # R2-A: Include lease_id and lease validation data in the EXECUTE_REQUEST
+            # frame so the worker can validate the lease at the boundary without
+            # needing shared broker state.
+            intent_dict = ctx.intent.to_dict()
+            # Propagate lease_id from wal_fields
+            lease_id_from_wal = ctx.wal_fields.get("lease_id")
+            if lease_id_from_wal is not None:
+                intent_dict["lease_id"] = lease_id_from_wal
+            # Propagate lease validation data from wal_fields so worker can validate
+            # the lease without needing shared broker state.
+            lease_validation_data_from_wal = ctx.wal_fields.get("lease_validation_data")
+            if lease_validation_data_from_wal is not None:
+                intent_dict.update(lease_validation_data_from_wal)
             sup.send_frame(
                 FrameType.EXECUTE_REQUEST,
-                {"intent": ctx.intent.to_dict()},
+                {"intent": intent_dict},
                 correlation_id=intent_id,
             )
             deadline = time.monotonic() + timeout
