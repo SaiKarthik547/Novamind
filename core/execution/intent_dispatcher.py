@@ -259,13 +259,10 @@ class IntentDispatcher:
         Raises after journaling REJECTED when validation or authority
         resolution refuses the intent.
 
-        R2-A: Acquire a broker lease and bind it to the intent for the
-        canonical execution path. The lease is included in the EXECUTE_REQUEST
-        frame so the worker can validate at the boundary.
+        R2-A: Acquire a lease from the kernel-owned broker and bind it to the
+        intent for the canonical execution path. The lease is included in the
+        EXECUTE_REQUEST frame so the worker can validate at the boundary.
         """
-        from core.runtime.capability_broker import CapabilityBroker
-        broker = CapabilityBroker()
-
         capability = self._capability_of(intent)
         lane = "worker" if capability in self._worker_lane_capabilities else "in_process"
 
@@ -303,10 +300,16 @@ class IntentDispatcher:
         # R2-A: Acquire a lease bound to this intent for worker boundary validation
         # For the canonical worker lane, a lease is mandatory.
         # For R1 legacy intents (in_process lane), lease_id remains None.
+        # Use the single runtime-owned broker from the kernel supervisor,
+        # not a per-intent instantiation, so revocation and lifecycle state
+        # are authoritative across the entire execution boundary.
         lease_id = None
         lease_validation_data = None  # R2-A: data for worker-side validation
         if lane == "worker":
-            # Bind lease to intent identity for the canonical path
+            # Bound lease to intent identity for the canonical path using the
+            # runtime-owned broker. The same broker instance is used for all
+            # dispatches, ensuring revocation and terminalization are authoritative.
+            broker = self._kernel_supervisor.broker
             lease = broker.request_lease(
                 task_id=f"dispatch-{intent.intent_id}",
                 capabilities=[Capability.FILE_WRITE] if capability == "filesystem.write" else [],

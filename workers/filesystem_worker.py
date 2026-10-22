@@ -1,17 +1,26 @@
 #!/usr/bin/env python3
-from typing import Optional
-import logging
 import sys
+import json
+import logging
 import os
+
+from typing import Optional
 
 from core.contracts.intent_contracts import IntentContractRegistry
 from core.adapters.adapter_supervisor import ADAPTER_REGISTRY
 from core.execution.execution_intent import ExecutionIntent
+from core.ipc.worker_protocol import FrameType, WorkerIdentity
+from workers.worker_base import WorkerBase
 
+# Ensure it can find the core module when run as a script
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("FilesystemWorker")
 
 
-class FilesystemWorker:
+class FilesystemWorker(WorkerBase):
     """Worker process that executes filesystem intents with lease validation."""
 
     def __init__(self, supervisor=None):
@@ -147,6 +156,11 @@ class FilesystemWorker:
             )
 
     def handle_request(self, payload: dict) -> dict:
+        """Handle an EXECUTE_REQUEST frame from the supervisor.
+
+        R2-A: lease validation is performed before adapter execution.
+        The lease data is extracted from the payload and validated authoritatively.
+        """
         intent_dict = payload.get("intent")
         if not isinstance(intent_dict, dict):
             raise ValueError("EXECUTE_REQUEST payload missing 'intent' object")
@@ -163,15 +177,15 @@ class FilesystemWorker:
         #   Missing lease_data → REJECTED (fail-closed, no silent fallback).
         #   Present but invalid → REJECTED.
         #   This is the ONLY path for permanent OS effects.
-        #\n
+        #
         # R1 legacy lane: intents explicitly opting into the legacy CapabilityRegistry
         # authority may omit lease_data. This mode is restricted, tested, and
         # documented for temporary removal. It does NOT silently bypass the new
         # lease requirement for the canonical lane.
-        #\n
+        #
         # The decision is based solely on whether we are in the canonical worker lane
         # or the R1 legacy lane, not on whether lease_id happens to be present.
-        #\n
+        #
         if lease_data is not None:
             # Canonical R2-A path: lease_data present → validate it (fail-closed)
             try:
@@ -184,14 +198,14 @@ class FilesystemWorker:
             # Check if this intent is authorized for R1 legacy execution
             # by verifying it has a CapabilityRegistry authority.
             # Only 'legacy_bridge' explicitly opts into the pre-R2-A regime.
-            # `authority_origin=\"kernel\"` does NOT grant a lease-free bypass —
+            # `authority_origin="kernel"` does NOT grant a lease-free bypass —
             # the canonical worker lane always requires a valid lease.
             legacy_origin = getattr(intent, "authority_origin", None)
             if legacy_origin != "legacy_bridge":
                 # Not explicitly marked as legacy → reject missing lease
                 # This enforces the canonical R2-A policy: all permanent effects
                 # must go through the lease boundary, regardless of origin.
-                # `authority_origin=\"kernel\"` is not a legacy exemption.
+                # `authority_origin="kernel"` is not a legacy exemption.
                 raise RuntimeError(
                     "Missing ExecutionLease validation data at worker boundary: "
                     "no lease_data present and intent not marked as legacy-authorized"
@@ -223,3 +237,8 @@ class FilesystemWorker:
                 result.get("error") or f"adapter {intent.adapter} reported failure"
             )
         return result
+
+
+if __name__ == "__main__":
+    worker = FilesystemWorker()
+    worker.run()
