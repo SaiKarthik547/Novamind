@@ -310,10 +310,15 @@ class IntentDispatcher:
             # runtime-owned broker. The same broker instance is used for all
             # dispatches, ensuring revocation and terminalization are authoritative.
             broker = self._kernel_supervisor.broker
+            # Derive the authorized path scope from the intent payload target.
+            # The dispatcher owns the scope decision: lease the exact target path
+            # so the worker's boundary check can authorize it.
+            target_path = intent.payload.get("path", "")
+            allowed_paths = [target_path] if target_path else []
             lease = broker.request_lease(
                 task_id=f"dispatch-{intent.intent_id}",
                 capabilities=[Capability.FILE_WRITE] if capability == "filesystem.write" else [],
-                allowed_paths=[],
+                allowed_paths=allowed_paths,
                 intent_id=intent.intent_id,
                 principal=getattr(intent, "principal", "UNKNOWN"),
                 agent_id=getattr(intent, "agent_id", "UNKNOWN"),
