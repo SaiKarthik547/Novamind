@@ -109,8 +109,10 @@ class RecoveryJournal:
 
         with self._write_lock:
             try:
-                # 1. Cryptographic Chaining of Causal Topology
-                # Incorporate previous hash + current causal topology footprint
+                # Chain the previous hash
+                payload["previous_hash"] = self._last_hash
+                
+                # Add topology_hash for legacy compatibility
                 hashable_node = {
                     "event_id": payload.get("event_id"),
                     "parent_event_id": payload.get("parent_event_id"),
@@ -120,18 +122,22 @@ class RecoveryJournal:
                 }
                 current_hash = state_hash(hashable_node)
                 payload["topology_hash"] = current_hash
-                payload["previous_hash"] = self._last_hash
-                self._last_hash = current_hash
+                
+                # Compute event_hash = state_hash(event_without_eventhash)
+                # The replay engine will pop event_hash and verify state_hash(event_remaining) == event_hash
+                event_hash_value = state_hash(payload)
+                payload["event_hash"] = event_hash_value
+                self._last_hash = event_hash_value
 
-                # 2. Serialize
+                # Serialize
                 data_str = json.dumps(payload, default=str) + "\n"
                 data_bytes_len = len(data_str.encode("utf-8"))
 
-                # 3. Size Ceiling Pre-check
+                # Size Ceiling Pre-check
                 if self._current_segment_bytes + data_bytes_len > MAX_SEGMENT_BYTES or self._current_segment_events >= MAX_SEGMENT_EVENTS:
                     self._rotate_segment()
 
-                # 4. FSYNC DURABILITY BARRIER
+                # FSYNC DURABILITY BARRIER
                 self._current_file.write(data_str)
                 self._current_file.flush()
                 os.fsync(self._current_file.fileno())
@@ -139,7 +145,7 @@ class RecoveryJournal:
                 self._current_segment_bytes += data_bytes_len
                 self._current_segment_events += 1
 
-                # 5. Logical Checkpoint Trigger (Placeholder for Quiescence hook)
+                # Logical Checkpoint Trigger (Placeholder for Quiescence hook)
                 if event.__class__.__name__ == "SchedulerEvent" and payload.get("action") == "TOPOLOGY_QUIESCENT":
                     self._rotate_segment(is_checkpoint=True)
 
@@ -175,7 +181,12 @@ class EventRecorderCompat:
     while delegating durability to the internal RecoveryJournal instance.
     """
 
-    def __init__(self, log_dir: str = None, session_id: str = None):
+    def __init__(self, log_dir: str = None, session_id: str = None, **kwargs):
+        # Support log_path for backward compatibility with main.py
+        log_path = kwargs.get("log_path")
+        if log_path and not log_dir:
+            log_dir = str(Path(log_path).parent)
+            session_id = Path(log_path).stem.replace("session_", "")
         self._journal = RecoveryJournal(log_dir=log_dir, session_id=session_id)
         self._started = False
 
@@ -199,12 +210,22 @@ class EventRecorderCompat:
         Accepts (name, category, level, data) or any signature; adapt as needed.
         The canonical API is journal.commit_sync(event: RuntimeEvent).
         For legacy callers we accept varargs and build a minimal RuntimeEvent.
+        Do not swallow journal-write failures — propagate them if critical.
         """
         try:
             if len(args) >= 4:
                 name, category, level, data = args[0], args[1], args[2], args[3]
+            elif args:
+                name = args[0]
+                category = kwargs.get("category") or kwargs.get("source_runtime") or "core"
+                level = kwargs.get("level") or kwargs.get("severity") or "info"
+                data = args[2] if len(args) > 2 else (kwargs.get("data") or kwargs.get("payload") or {})
             else:
-                name, category, level, data = str(args[0]) if args else "UNKNOWN", "core", "info", {}
+                name = kwargs.get("event_type") or kwargs.get("name") or "UNKNOWN"
+                category = kwargs.get("category") or kwargs.get("source_runtime") or "core"
+                level = kwargs.get("level") or kwargs.get("severity") or "info"
+                data = kwargs.get("data") or kwargs.get("payload") or {}
+            
             from core.contracts.runtime_events import RuntimeEvent
             # RuntimeEvent is a frozen dataclass with fields: event_id, timestamp, parent_event_id, causal_lineage, payload
             # Build a minimal event from the legacy (name, category, level, data) signature
@@ -215,14 +236,22 @@ class EventRecorderCompat:
                 "_legacy_level": level,
                 "_legacy_data": data
             }
+            # Merge any additional payload from kwargs
+            if "payload" in kwargs and isinstance(kwargs["payload"], dict):
+                legacy_payload.update(kwargs["payload"])
+            if "data" in kwargs and isinstance(kwargs["data"], dict) and "data" not in legacy_payload:
+                legacy_payload["_legacy_data"] = kwargs["data"]
+            
             event = RuntimeEvent(event_id=str(uuid.uuid4()),
-                                 timestamp=__import__('time').monotonic(),
+                                 timestamp=time.monotonic(),
                                  parent_event_id=None,
                                  causal_lineage=[],
                                  payload=legacy_payload)
             self._journal.commit_sync(event)
-        except Exception:
-            logger.warning(f"[EventRecorderCompat] log_event failed: {args}", exc_info=True)
+        except Exception as e:
+            logger.warning(f"[EventRecorderCompat] log_event failed: {args}, kwargs={kwargs}, error={e}", exc_info=True)
+            # Do not swallow failures silently - propagate critical errors
+            raise
 
 
 # Provide EventRecorder as the compatibility alias so existing imports

@@ -50,29 +50,30 @@ class FilesystemWorker(WorkerBase):
             if field_name in intent_dict:
                 value = intent_dict[field_name]
                 # Convert enum-like fields from serialized strings back to instances.
+                # Enum fields are serialized by NAME (e.g. "STRICT"), so use name lookup via []
+                # to avoid ValueError on name/value mismatch.
                 if field_name == "verification_mode" and isinstance(value, str):
                     try:
-                        value = VerificationMode(value)
-                    except ValueError:
-                        pass
+                        value = VerificationMode[value]
+                    except (ValueError, KeyError):
+                        raise ValueError(f"Invalid enum name for VerificationMode: {value}")
                 elif field_name == "rollback_strategy" and isinstance(value, str):
                     try:
-                        value = RollbackMode(value)
-                    except ValueError:
-                        pass
+                        value = RollbackMode[value]
+                    except (ValueError, KeyError):
+                        raise ValueError(f"Invalid enum name for RollbackMode: {value}")
                 elif field_name == "priority" and isinstance(value, str):
                     try:
                         # Serialized form uses enum NAME (e.g. "STANDARD"), not value (1).
                         # Use name lookup via [] to avoid ValueError on name/value mismatch.
                         value = IntentPriority[value]
                     except (ValueError, KeyError):
-                        # Invalid enum name retained as string — caller will detect mismatch.
-                        pass
+                        raise ValueError(f"Invalid enum name for IntentPriority: {value}")
                 elif field_name == "determinism" and isinstance(value, str):
                     try:
-                        value = IntentDeterminismLevel(value)
-                    except ValueError:
-                        pass
+                        value = IntentDeterminismLevel[value]
+                    except (ValueError, KeyError):
+                        raise ValueError(f"Invalid enum name for IntentDeterminismLevel: {value}")
                 kwargs[field_name] = value
 
         # Ensure agent_id and lease_id have proper types
