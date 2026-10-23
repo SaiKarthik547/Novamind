@@ -22,11 +22,12 @@ logger = logging.getLogger(__name__)
 MAX_SEGMENT_BYTES = 64 * 1024 * 1024  # 64 MB
 MAX_SEGMENT_EVENTS = 100_000
 
+
 class RecoveryJournal:
-    """
-    Cryptographically chained, causal WAL (Write-Ahead Log).
+    """Cryptographically chained, causal WAL (Write-Ahead Log).
     No longer an async queue; enforces synchronous durability (fsync).
     """
+
     def __init__(self, log_dir: str = None, session_id: str = None):
         self.session_id = session_id or str(uuid.uuid4())
         base_dir = Path(log_dir) if log_dir else Path("runtime/logs")
@@ -94,8 +95,7 @@ class RecoveryJournal:
         self._open_segment(self._segment_index + 1)
 
     def commit_sync(self, event: RuntimeEvent) -> None:
-        """
-        Synchronous durability barrier.
+        """Synchronous durability barrier.
         Appends the event, chains the hash, and fsyncs immediately.
         Must be called BEFORE topological propagation.
         """
@@ -160,4 +160,73 @@ class RecoveryJournal:
 # Some modules currently import EventRecorder from this package. This alias exists
 # only to avoid a mass import rewrite before the canonical journal authority is chosen.
 # It must NOT be treated as the canonical event recorder for the convergence program.
-EventRecorder = RecoveryJournal
+
+# Provide a compatibility wrapper so legacy callers (e.g. test_split_brain_recovery.py)
+# can use start()/log_event()/stop() against the canonical RecoveryJournal.
+# This wrapper is callable as EventRecorder(log_dir, session_id) to match the
+# original RecoveryJournal constructor API, and delegates durability to the journal.
+
+
+class EventRecorderCompat:
+    """Compatibility wrapper for legacy EventRecorder API.
+
+    Accepts the same constructor signature as the original RecoveryJournal
+    (log_dir, session_id) and provides start()/log_event()/stop() methods
+    while delegating durability to the internal RecoveryJournal instance.
+    """
+
+    def __init__(self, log_dir: str = None, session_id: str = None):
+        self._journal = RecoveryJournal(log_dir=log_dir, session_id=session_id)
+        self._started = False
+
+    @property
+    def session_dir(self) -> Path:
+        """Delegate session_dir to the underlying RecoveryJournal."""
+        return self._journal.session_dir
+
+    async def start(self) -> None:
+        """Legacy start — RecoveryJournal uses commit_sync; this is a no-op stub."""
+        self._started = True
+
+    async def stop(self) -> None:
+        """Legacy stop — flush and close the journal."""
+        if self._journal:
+            self._journal.close()
+
+    def log_event(self, *args, **kwargs) -> None:
+        """Legacy log_event — delegate to commit_sync via canonical API.
+
+        Accepts (name, category, level, data) or any signature; adapt as needed.
+        The canonical API is journal.commit_sync(event: RuntimeEvent).
+        For legacy callers we accept varargs and build a minimal RuntimeEvent.
+        """
+        try:
+            if len(args) >= 4:
+                name, category, level, data = args[0], args[1], args[2], args[3]
+            else:
+                name, category, level, data = str(args[0]) if args else "UNKNOWN", "core", "info", {}
+            from core.contracts.runtime_events import RuntimeEvent
+            # RuntimeEvent is a frozen dataclass with fields: event_id, timestamp, parent_event_id, causal_lineage, payload
+            # Build a minimal event from the legacy (name, category, level, data) signature
+            # and embed the legacy metadata in the payload for later interpretation.
+            legacy_payload = {
+                "_legacy_name": name,
+                "_legacy_category": category,
+                "_legacy_level": level,
+                "_legacy_data": data
+            }
+            event = RuntimeEvent(event_id=str(uuid.uuid4()),
+                                 timestamp=__import__('time').monotonic(),
+                                 parent_event_id=None,
+                                 causal_lineage=[],
+                                 payload=legacy_payload)
+            self._journal.commit_sync(event)
+        except Exception:
+            logger.warning(f"[EventRecorderCompat] log_event failed: {args}", exc_info=True)
+
+
+# Provide EventRecorder as the compatibility alias so existing imports
+# (e.g. from core.replay.event_recorder import EventRecorder) resolve without
+# merging journal architectures. It supports start()/log_event()/stop()
+# while delegating durability to the canonical RecoveryJournal.
+EventRecorder = EventRecorderCompat

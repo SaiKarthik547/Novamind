@@ -35,6 +35,7 @@ class RuntimeEvent:
     timestamp: float = field(default_factory=time.monotonic)
     parent_event_id: Optional[str] = None
     causal_lineage: List[str] = field(default_factory=list)
+    payload: Dict[str, Any] = field(default_factory=dict)
 
 # ── Semantic Event Hierarchy ──────────────────────────────────────────
 

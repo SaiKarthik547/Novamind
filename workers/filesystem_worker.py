@@ -62,8 +62,11 @@ class FilesystemWorker(WorkerBase):
                         pass
                 elif field_name == "priority" and isinstance(value, str):
                     try:
-                        value = IntentPriority(value)
-                    except ValueError:
+                        # Serialized form uses enum NAME (e.g. "STANDARD"), not value (1).
+                        # Use name lookup via [] to avoid ValueError on name/value mismatch.
+                        value = IntentPriority[value]
+                    except (ValueError, KeyError):
+                        # Invalid enum name retained as string — caller will detect mismatch.
                         pass
                 elif field_name == "determinism" and isinstance(value, str):
                     try:
